@@ -98,6 +98,7 @@ while true; do
       if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null; then
         last_trigger=$now
         printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
+        printf '1\n' > "$CONFIG/app_session_triggered"
         {
           echo "[$(date '+%Y-%m-%d %H:%M:%S')] 应用进入前台: package=$package"
           if [ -f "$script" ]; then
@@ -114,6 +115,8 @@ while true; do
           fi
         } >> "$TRIGGER_LOG" 2>&1
       fi
+    else
+      printf '0\n' > "$CONFIG/app_session_triggered"
     fi
   fi
 
@@ -154,6 +157,10 @@ while true; do
       app_id=$((uid % 100000))
       case ",$events," in *",$event_type,"*) ;; *) continue ;; esac
       [ "$app_id" -eq "$target_app_id" ] 2>/dev/null || continue
+      # 目标应用本次进入前台时已经执行过，忽略其后续 Root 事件，避免重复。
+      session_triggered=$(read_value app_session_triggered 0)
+      foreground_now=$(foreground_package)
+      if [ "$foreground_now" = "$package" ] && [ "$session_triggered" = "1" ]; then continue; fi
       now=$(date +%s)
       elapsed=$((now - last_trigger))
       [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
