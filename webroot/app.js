@@ -52,10 +52,9 @@ async function saveConfig() {
   const events = 'keyboard_hidden';
   const args = [$('package').value.trim(), $('script').value.trim(), $('interval').value, $('enabled').checked ? '1' : '0', events, $('cooldown').value];
   const activationCode = $('activationCode').value;
-  if (!activationCode) { toast('请填写激活字符'); return; }
   try {
     await rootExec(`${quote(CONTROL)} set-expected ${quote(activationCode)} && ${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
-    toast('配置已保存'); await loadStatus();
+    toast(activationCode ? '配置已保存：已启用字符校验' : '配置已保存：不校验激活字符'); await loadStatus();
   } catch (error) { toast(error.message); }
 }
 

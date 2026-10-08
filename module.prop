@@ -1,7 +1,7 @@
 id=ksu_app_watcher
 name=KSU 键盘回撤监听与 Root 控制台
 version=内测版本
-versionCode=13
+versionCode=14
 author=无痛
-description=指定应用输入正确激活字符并收起键盘后以 Root 执行 Shell，提供开机自启、根目录浏览与预输入 Root 控制台。
+description=指定应用键盘回撤后以 Root 执行 Shell；激活字符可选，并提供守护自启、根目录浏览与预输入 Root 控制台。
 

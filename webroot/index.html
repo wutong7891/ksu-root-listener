@@ -18,8 +18,8 @@
       <h2>键盘回撤监听配置</h2>
       <div id="supportNotice" class="notice">正在检测当前应用与键盘状态…</div>
       <label>目标应用包名<input id="package" autocomplete="off" placeholder="com.example.app"></label>
-      <label>激活字符<input id="activationCode" autocomplete="off" maxlength="128" placeholder="例如 1234确认"></label>
-      <p class="hint">必须在目标应用当前获得焦点的普通输入框中完整输入这段内容，再收起键盘。密码框不会读取或触发。</p>
+      <label>激活字符（可选）<input id="activationCode" autocomplete="off" maxlength="128" placeholder="留空则不校验；例如 1234确认"></label>
+      <p class="hint">留空时，只检测目标应用的键盘弹出与回撤；填写后，必须在当前获得焦点的普通输入框中完整输入该内容。密码框不会读取或触发。</p>
       <label>键盘弹出并收起后执行的 Shell 文件<input id="script" autocomplete="off" placeholder="/data/adb/.../target.sh"></label>
       <label>脚本预输入台
         <textarea id="scriptInput" rows="5" spellcheck="false" placeholder="1&#10;确认&#10;要输入的文字"></textarea>
@@ -35,7 +35,7 @@
         <button id="openApp">打开应用</button>
         <button id="runScript">使用预输入执行</button>
       </div>
-      <p class="hint">目标应用和键盘活动期间约每 0.25 秒检查一次；输入框内容必须与激活字符完全相同，并且键盘要先弹出、随后收起，才执行一次。模块不会记录实际输入。脚本由 Root 从 <code>/</code> 执行。</p>
+      <p class="hint">目标应用和键盘活动期间约每 0.20 秒检查一次；键盘要先弹出、随后收起，才执行一次。填写激活字符时还须完全匹配；留空则跳过字符校验。模块不会记录实际输入。脚本由 Root 从 <code>/</code> 执行。</p>
     </section>
 
     <section class="card">

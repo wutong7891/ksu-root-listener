@@ -49,6 +49,10 @@ input='1
 KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-preinput "$input" >/dev/null
 assert_equal "$(KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" run)" '<1>|<>|<确认>'
 
+# 激活字符允许留空；留空代表只检测键盘弹出与回撤。
+KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-expected '' >/dev/null
+[ ! -s "$test_root/config/expected_input" ] || { echo 'empty activation code was not saved' >&2; exit 1; }
+
 # 同一次前台会话只能被认领一次。
 STATE_DIR="$test_root"
 CONFIG="$test_root/config"

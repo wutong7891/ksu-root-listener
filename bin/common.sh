@@ -117,11 +117,13 @@ keyboard_visible() {
     && return 0
 
   dumpsys window insets 2>/dev/null | awk '
-    BEGIN { ime = 0; distance = 0; visible = 0 }
+    BEGIN { ime = 0; distance = 0; visible = 0; server = 0; client = 0 }
     /type=ime|mType=ime/ { ime = 1; distance = 0 }
     ime && /visible=true|mVisible=true/ { visible = 1; exit }
+    ime && /mServerVisible=true/ { server = 1 }
+    ime && /mClientVisible=true/ { client = 1 }
     ime { distance++; if (distance > 8) ime = 0 }
-    END { exit visible ? 0 : 1 }
+    END { exit (visible || (server && client)) ? 0 : 1 }
   '
 }
 
@@ -136,8 +138,13 @@ ui_has_expected_input() {
     -e 's/>/\&gt;/g' \
     -e 's/"/\&quot;/g' \
     -e "s/'/\\\&apos;/g")
-  # 直接把层级写入 uiautomator 自身的 stdout，不在磁盘留下包含界面文字的 XML。
-  uiautomator dump /proc/self/fd/1 2>/dev/null | awk -v expected="$xml_expected" '
+  # --compressed 明显缩短部分 ROM 等待界面空闲的时间。限制单次快照时长，
+  # 防止系统 UIAutomator 异常时卡死整个常驻监听器。
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 2 uiautomator dump --compressed /proc/self/fd/1 2>/dev/null
+  else
+    uiautomator dump --compressed /proc/self/fd/1 2>/dev/null
+  fi | awk -v expected="$xml_expected" '
     BEGIN { RS = "<node"; matched = 0 }
     index($0, "editable=\"true\"") &&
     index($0, "focused=\"true\"") &&

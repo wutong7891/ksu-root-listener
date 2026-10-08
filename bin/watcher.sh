@@ -7,7 +7,7 @@ CONFIG="$STATE_DIR/config"
 TRIGGER_LOG="$STATE_DIR/logs/trigger.log"
 PIDFILE="$STATE_DIR/watcher.pid"
 SESSION_BOOTFILE="$CONFIG/session_boot_id"
-ACTIVE_INTERVAL=0.25
+ACTIVE_INTERVAL=0.20
 
 mkdir -p "$CONFIG" "$STATE_DIR/logs"
 . "$MODDIR/bin/common.sh"
@@ -70,6 +70,7 @@ while true; do
       hidden_samples=0
       input_matched=0
       clear_app_session_claim
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 目标应用进入前台: package=$package" >> "$TRIGGER_LOG"
     fi
 
     if keyboard_visible; then
@@ -80,15 +81,26 @@ while true; do
         input_matched=0
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] 检测到键盘弹出，等待回撤: package=$package" >> "$TRIGGER_LOG"
       fi
-      if [ "$input_matched" != "1" ] && ui_has_expected_input "$expected_input"; then
-        input_matched=1
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 激活字符匹配，等待键盘回撤: package=$package" >> "$TRIGGER_LOG"
+      if [ "$input_matched" != "1" ]; then
+        if [ -z "$expected_input" ]; then
+          input_matched=1
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 未设置激活字符，仅等待键盘回撤: package=$package" >> "$TRIGGER_LOG"
+        elif ui_has_expected_input "$expected_input"; then
+          input_matched=1
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 激活字符匹配，等待键盘回撤: package=$package" >> "$TRIGGER_LOG"
+        fi
       fi
     elif [ "$keyboard_armed" = "1" ]; then
       hidden_samples=$((hidden_samples + 1))
       if [ "$hidden_samples" -ge 2 ]; then
         keyboard_armed=0
         hidden_samples=0
+        # 某些 ROM 的 UIAutomator 快照比输入法状态慢；键盘刚隐藏时再补查一次，
+        # 避免用户输入后很快回撤导致漏判。
+        if [ "$input_matched" != "1" ] && [ -n "$expected_input" ] && ui_has_expected_input "$expected_input"; then
+          input_matched=1
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 回撤后补查激活字符匹配: package=$package" >> "$TRIGGER_LOG"
+        fi
         if [ "$input_matched" != "1" ]; then
           echo "[$(date '+%Y-%m-%d %H:%M:%S')] 键盘已回撤，但激活字符不匹配，本次不执行: package=$package" >> "$TRIGGER_LOG"
           input_matched=0
