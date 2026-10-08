@@ -10,13 +10,28 @@ mkdir -p "$CONFIG" "$STATE_DIR/logs"
 
 read_value() { [ -f "$CONFIG/$1" ] && cat "$CONFIG/$1" 2>/dev/null || printf '%s' "$2"; }
 write_value() { tmp="$CONFIG/.$1.tmp.$$"; printf '%s\n' "$2" > "$tmp" && mv -f "$tmp" "$CONFIG/$1"; }
+reload_watcher() {
+  pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
+  if pid_is_watcher "$pid" && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null
+    tries=0
+    while kill -0 "$pid" 2>/dev/null && [ "$tries" -lt 40 ]; do
+      sleep 0.05
+      tries=$((tries + 1))
+    done
+  fi
+  saved_pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
+  [ "$saved_pid" = "$pid" ] && rm -f "$STATE_DIR/watcher.pid"
+  nohup "$MODDIR/bin/watcher.sh" </dev/null >/dev/null 2>&1 &
+}
 case "$1" in
   status)
     echo "enabled=$(read_value enabled 0)"
     echo "package=$(read_value package com.example.app)"
     echo "script=$(read_value script "$MODDIR/scripts/target.sh")"
     echo "interval=$(read_value interval 2)"
-    echo "active_interval=0.20"
+    echo "active_interval=0.10"
+    echo "discovery_interval=0.25"
     echo "events=input_match"
     echo "cooldown=$(read_value cooldown 2)"
     [ -s "$CONFIG/expected_input" ] && echo "expected_set=yes" || echo "expected_set=no"
@@ -44,11 +59,7 @@ case "$1" in
       rm -f "$CONFIG/last_trigger"
     fi
     if [ "$enabled" = "1" ]; then
-      pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
-      if ! pid_is_watcher "$pid" || ! kill -0 "$pid" 2>/dev/null; then
-        rm -f "$STATE_DIR/watcher.pid"
-        nohup "$MODDIR/bin/watcher.sh" </dev/null >/dev/null 2>&1 &
-      fi
+      reload_watcher
     fi
     echo "配置已保存"
     ;;
@@ -101,14 +112,8 @@ case "$1" in
   log) [ -f "$TRIGGER_LOG" ] && tail -n "${2:-120}" "$TRIGGER_LOG" || echo "暂无触发日志" ;;
   clear-log) : > "$TRIGGER_LOG"; echo "触发日志已清空" ;;
   restart)
-    pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
-    if pid_is_watcher "$pid" && kill -0 "$pid" 2>/dev/null; then
-      echo "监听器正在运行；配置会自动加载，无需重启"
-    else
-      rm -f "$STATE_DIR/watcher.pid"
-      nohup "$MODDIR/bin/watcher.sh" </dev/null >/dev/null 2>&1 &
-      echo "监听器已启动；建议重启手机以确保由 KernelSU 服务托管"
-    fi
+    reload_watcher
+    echo "监听器已强制重载为当前模块版本"
     ;;
   *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|get-expected|set-expected|list-dir|log|clear-log|restart}" >&2; exit 1 ;;
 esac

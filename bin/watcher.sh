@@ -7,7 +7,8 @@ CONFIG="$STATE_DIR/config"
 TRIGGER_LOG="$STATE_DIR/logs/trigger.log"
 PIDFILE="$STATE_DIR/watcher.pid"
 SESSION_BOOTFILE="$CONFIG/session_boot_id"
-ACTIVE_INTERVAL=0.20
+ACTIVE_INTERVAL=0.10
+DISCOVERY_INTERVAL=0.25
 
 mkdir -p "$CONFIG" "$STATE_DIR/logs"
 . "$MODDIR/bin/common.sh"
@@ -118,7 +119,7 @@ while true; do
   if [ "$target_active" = "1" ]; then
     sleep "$ACTIVE_INTERVAL"
   else
-    sleep "$interval"
+    sleep "$DISCOVERY_INTERVAL"
   fi
 done
 

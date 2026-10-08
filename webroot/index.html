@@ -26,7 +26,7 @@
       </label>
       <p class="hint">每一行会依次发送给脚本，并在行末模拟回车。适用于使用 <code>read</code> 读取数字、文字或菜单选项的脚本；留空表示不预输入。</p>
       <div class="row">
-        <label>非目标检查间隔（秒）<input id="interval" type="number" min="1" max="60" value="2"></label>
+        <label>关闭监听时待命间隔（秒）<input id="interval" type="number" min="1" max="60" value="2"></label>
         <label>触发冷却（秒）<input id="cooldown" type="number" min="0" max="3600" value="2"></label>
         <label class="switchRow">启用监听<input id="enabled" type="checkbox"></label>
       </div>
@@ -35,7 +35,7 @@
         <button id="openApp">打开应用</button>
         <button id="runScript">使用预输入执行</button>
       </div>
-      <p class="hint">目标应用前台期间约每 0.20 秒检查一次；匹配后立即执行，同一内容保持不变时只执行一次，改掉或清空后重新输入才可再次触发。留空时不自动执行。模块不会记录实际输入。脚本由 Root 从 <code>/</code> 执行。</p>
+      <p class="hint">启用后约每 0.25 秒发现目标应用，进入目标应用后约每 0.10 秒发起输入检查；匹配后立即执行，同一内容保持不变时只执行一次。留空时不自动执行。保存配置会强制重载当前版本监听器，无需重启手机。模块不会记录实际输入。脚本由 Root 从 <code>/</code> 执行。</p>
     </section>
 
     <section class="card">

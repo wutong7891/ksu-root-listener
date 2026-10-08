@@ -38,3 +38,10 @@ set_perm "$MODPATH/action.sh" 0 0 0755
 set_perm_recursive "$MODPATH/bin" 0 0 0755 0755
 set_perm_recursive "$MODPATH/scripts" 0 0 0755 0755
 
+# 升级时结束旧版本监听器。旧守护器或新版 WebUI 会自动启动当前文件，
+# 避免必须重启手机才能从旧逻辑切换到新逻辑。
+old_pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
+if [ -n "$old_pid" ] && [ -r "/proc/$old_pid/cmdline" ]; then
+  tr '\000' ' ' < "/proc/$old_pid/cmdline" 2>/dev/null | grep -F '/bin/watcher.sh' >/dev/null 2>&1 && kill "$old_pid" 2>/dev/null
+fi
+
