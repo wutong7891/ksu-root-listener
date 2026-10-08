@@ -4,21 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="dark">
-  <title>KSU 前台监听</title>
+  <title>KSU 键盘回撤监听</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
     <header>
-      <div><p class="eyebrow">FOREGROUND AUTOMATION</p><h1>前台监听与 Root 控制台</h1></div>
+      <div><p class="eyebrow">KEYBOARD AUTOMATION</p><h1>键盘回撤监听与 Root 控制台</h1></div>
       <span id="watcherBadge" class="badge">读取中</span>
     </header>
 
     <section class="card">
-      <h2>前台监听配置</h2>
-      <div id="supportNotice" class="notice">正在检测当前前台应用…</div>
+      <h2>键盘回撤监听配置</h2>
+      <div id="supportNotice" class="notice">正在检测当前应用与键盘状态…</div>
       <label>目标应用包名<input id="package" autocomplete="off" placeholder="com.example.app"></label>
-      <label>应用进入前台后执行的 Shell 文件<input id="script" autocomplete="off" placeholder="/data/adb/.../target.sh"></label>
+      <label>键盘弹出并收起后执行的 Shell 文件<input id="script" autocomplete="off" placeholder="/data/adb/.../target.sh"></label>
       <label>脚本预输入台
         <textarea id="scriptInput" rows="5" spellcheck="false" placeholder="1&#10;确认&#10;要输入的文字"></textarea>
       </label>
@@ -33,7 +33,7 @@
         <button id="openApp">打开应用</button>
         <button id="runScript">使用预输入执行</button>
       </div>
-      <p class="hint">仅在目标应用进入前台时执行一次；应用留在后台、Root 请求或同次停留都不会触发。脚本由 Root 从 <code>/</code> 执行。</p>
+      <p class="hint">目标应用必须位于前台，并且键盘要先弹出、随后收起，才执行一次。打开应用、Root 请求或键盘未弹出都不会触发；每次新的弹出/收起周期最多执行一次。脚本由 Root 从 <code>/</code> 执行。</p>
     </section>
 
     <section class="card">

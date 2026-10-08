@@ -2,9 +2,9 @@
 
 SKIPUNZIP=0
 
-ui_print "- 正在安装 KSU Root监听与 Root 控制台"
+ui_print "- 正在安装 KSU 键盘回撤监听与 Root 控制台"
 ui_print "- 默认关闭监听，请安装后进入模块 WebUI 配置"
-ui_print "- 仅检测目标应用进入前台，不监听后台 Root 事件"
+ui_print "- 仅在目标应用前台完成键盘弹出并收起后触发"
 
 STATE_DIR="/data/adb/ksu_app_watcher"
 CONFIG="$STATE_DIR/config"
@@ -22,7 +22,7 @@ done
 [ -f "$CONFIG/script" ] || echo "$MODPATH/scripts/target.sh" > "$CONFIG/script"
 [ -f "$CONFIG/interval" ] || echo 2 > "$CONFIG/interval"
 [ -f "$CONFIG/events" ] || echo foreground > "$CONFIG/events"
-echo foreground > "$CONFIG/events"
+echo keyboard_hidden > "$CONFIG/events"
 [ -f "$CONFIG/cooldown" ] || echo 2 > "$CONFIG/cooldown"
 [ -f "$CONFIG/preinput" ] || : > "$CONFIG/preinput"
 chmod 0700 "$STATE_DIR" "$CONFIG" "$STATE_DIR/logs"

@@ -102,3 +102,25 @@ foreground_package() {
   fi
   printf '%s' "$pkg"
 }
+
+# 同时兼容多代 Android 的输入法可见状态字段。只把明确的 visible=true
+# 或 IME window visible 标志视为键盘已显示，避免 mShowRequested 的残留状态误报。
+keyboard_visible() {
+  input_state=$(dumpsys input_method 2>/dev/null)
+  printf '%s\n' "$input_state" | grep -Eq \
+    'mInputShown=true|mIsInputViewShown=true|isInputViewShown=true|mImeWindowVis=0x0*2([^0-9A-Fa-f]|$)|mImeWindowVis=0x0*3([^0-9A-Fa-f]|$)' \
+    && return 0
+
+  window_state=$(dumpsys window windows 2>/dev/null)
+  printf '%s\n' "$window_state" | grep -Eq \
+    'mImeWindowVis=0x0*2([^0-9A-Fa-f]|$)|mImeWindowVis=0x0*3([^0-9A-Fa-f]|$)' \
+    && return 0
+
+  dumpsys window insets 2>/dev/null | awk '
+    BEGIN { ime = 0; distance = 0; visible = 0 }
+    /type=ime|mType=ime/ { ime = 1; distance = 0 }
+    ime && /visible=true|mVisible=true/ { visible = 1; exit }
+    ime { distance++; if (distance > 8) ime = 0 }
+    END { exit visible ? 0 : 1 }
+  '
+}

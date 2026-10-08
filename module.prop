@@ -1,7 +1,7 @@
 id=ksu_app_watcher
-name=KSU 前台监听与 Root 控制台
+name=KSU 键盘回撤监听与 Root 控制台
 version=内测版本
-versionCode=11
+versionCode=12
 author=无痛
-description=仅在指定应用进入前台时以 Root 执行 Shell，提供开机自启、根目录浏览与预输入 Root 控制台。
+description=指定应用在前台弹出并收起键盘后以 Root 执行 Shell，提供开机自启、根目录浏览与预输入 Root 控制台。
 

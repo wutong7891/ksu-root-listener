@@ -22,23 +22,25 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' INT TERM
 
-# 前台会话只在本次开机有效，避免重启后沿用旧状态而漏掉第一次触发。
+# 触发时间只在本次开机有效，避免设备时间变化造成冷却判断异常。
 session_boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 saved_session_boot_id=$(cat "$SESSION_BOOTFILE" 2>/dev/null)
 if [ -n "$session_boot_id" ] && [ "$session_boot_id" != "$saved_session_boot_id" ]; then
-  rm -f "$CONFIG/last_foreground" "$CONFIG/last_trigger"
+  rm -f "$CONFIG/last_trigger"
   clear_app_session_claim
   printf '%s\n' "$session_boot_id" > "$SESSION_BOOTFILE"
 fi
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] KernelSU 前台检测服务已启动，pid=$$" >> "$TRIGGER_LOG"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] KernelSU 键盘回撤检测服务已启动，pid=$$" >> "$TRIGGER_LOG"
 
 read_value() {
   file="$1"; fallback="$2"
   [ -f "$CONFIG/$file" ] && cat "$CONFIG/$file" 2>/dev/null || printf '%s' "$fallback"
 }
 
-away_samples=0
+target_active=0
+keyboard_armed=0
+hidden_samples=0
 
 while true; do
   enabled=$(read_value enabled 0)
@@ -55,45 +57,58 @@ while true; do
   last_trigger=$(read_value last_trigger 0)
   case "$last_trigger" in ''|*[!0-9]*) last_trigger=0 ;; esac
 
-  # 只检测前台应用切换：应用从后台进入前台时触发一次，持续停留不重复。
+  # 只有目标应用处于前台，且本进程先观察到键盘显示，随后连续两次确认
+  # 键盘隐藏，才认定为一次有效“键盘回撤”。
   foreground=$(foreground_package)
-  last_foreground=$(read_value last_foreground '')
   if [ -n "$foreground" ] && [ "$foreground" = "$package" ]; then
-    away_samples=0
-    if [ "$foreground" != "$last_foreground" ]; then
-      printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
-      now=$(date +%s)
-      elapsed=$((now - last_trigger))
-      [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
-      if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null && claim_app_session foreground; then
-        last_trigger=$now
-        printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
-        {
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 应用进入前台: package=$package"
-          if [ -f "$script" ]; then
-            export KSU_TRIGGER_TYPE="app_foreground" KSU_TRIGGER_PACKAGE="$package"
-            execute_script_file "$script"
-            code=$?
-            [ "$code" -eq 75 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] 已有脚本正在执行，本次跳过"
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $code"
-          else
-            echo "脚本不存在: $script"
-          fi
-        } >> "$TRIGGER_LOG" 2>&1
-      fi
+    if [ "$target_active" != "1" ]; then
+      target_active=1
+      keyboard_armed=0
+      hidden_samples=0
+      clear_app_session_claim
     fi
-  elif [ -n "$foreground" ] && [ -n "$package" ]; then
-    # 系统弹窗或焦点抖动可能只持续一个采样周期；连续两次确认离开后才结束会话。
-    if [ "$last_foreground" = "$package" ]; then
-      away_samples=$((away_samples + 1))
-      if [ "$away_samples" -ge 2 ]; then
-        printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
+
+    if keyboard_visible; then
+      hidden_samples=0
+      if [ "$keyboard_armed" != "1" ]; then
         clear_app_session_claim
-        away_samples=0
+        keyboard_armed=1
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 检测到键盘弹出，等待回撤: package=$package" >> "$TRIGGER_LOG"
+      fi
+    elif [ "$keyboard_armed" = "1" ]; then
+      hidden_samples=$((hidden_samples + 1))
+      if [ "$hidden_samples" -ge 2 ]; then
+        keyboard_armed=0
+        hidden_samples=0
+        now=$(date +%s)
+        elapsed=$((now - last_trigger))
+        [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
+        if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null && claim_app_session keyboard_hidden; then
+          last_trigger=$now
+          printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
+          {
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 目标应用键盘已回撤: package=$package"
+            if [ -f "$script" ]; then
+              export KSU_TRIGGER_TYPE="keyboard_hidden" KSU_TRIGGER_PACKAGE="$package"
+              execute_script_file "$script"
+              code=$?
+              [ "$code" -eq 75 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] 已有脚本正在执行，本次跳过"
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $code"
+            else
+              echo "脚本不存在: $script"
+            fi
+          } >> "$TRIGGER_LOG" 2>&1
+        fi
       fi
     else
-      printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
-      away_samples=0
+      hidden_samples=0
+    fi
+  else
+    if [ "$target_active" = "1" ]; then
+      target_active=0
+      keyboard_armed=0
+      hidden_samples=0
+      clear_app_session_claim
     fi
   fi
 

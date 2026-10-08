@@ -12,10 +12,12 @@ assert_equal() {
 
 case_name=resumed
 dumpsys() {
-  case "$case_name:$1:$2" in
+  case "$case_name:$1:${2-}" in
     resumed:activity:activities) echo 'mResumedActivity: ActivityRecord{abc u0 com.demo.resumed/.MainActivity t12}' ;;
     top:activity:top) echo '  ACTIVITY com.demo.top/.MainActivity 123 pid=456' ;;
     window:window:windows) echo 'mCurrentFocus=Window{abc u0 com.demo.window/com.demo.window.MainActivity}' ;;
+    keyboard:input_method:) echo 'mInputShown=true mIsInputViewShown=true' ;;
+    keyboard-hidden:input_method:) echo 'mInputShown=false mIsInputViewShown=false' ;;
   esac
 }
 
@@ -24,6 +26,10 @@ case_name=top
 assert_equal "$(foreground_package)" com.demo.top
 case_name=window
 assert_equal "$(foreground_package)" com.demo.window
+case_name=keyboard
+keyboard_visible || { echo 'visible keyboard was not detected' >&2; exit 1; }
+case_name=keyboard-hidden
+if keyboard_visible; then echo 'hidden keyboard was detected as visible' >&2; exit 1; fi
 
 test_root=$(mktemp -d)
 trap 'rm -rf "$test_root"' EXIT INT TERM
@@ -82,18 +88,20 @@ watch_state="$test_root/watch-state"
 mkdir -p "$mock_bin" "$watch_state/config" "$watch_state/logs"
 cat > "$mock_bin/dumpsys" <<SCRIPT
 #!/bin/sh
-count_file='$test_root/dumpsys-count'
-count=0
-[ -f "\$count_file" ] && count=\$(cat "\$count_file")
-count=\$((count + 1))
-printf '%s\n' "\$count" > "\$count_file"
 case "\$1:\$2" in
   activity:activities)
-    # 第二次采样模拟短暂跳到 SystemUI，随后返回目标应用。
-    if [ "\$count" -eq 2 ]; then
-      echo 'mResumedActivity: ActivityRecord{abc u0 com.android.systemui/.MainActivity t12}'
+    echo 'mResumedActivity: ActivityRecord{abc u0 com.demo.target/.MainActivity t12}'
+    ;;
+  input_method:)
+    count_file='$test_root/ime-count'
+    count=0
+    [ -f "\$count_file" ] && count=\$(cat "\$count_file")
+    count=\$((count + 1))
+    printf '%s\n' "\$count" > "\$count_file"
+    if [ "\$count" -le 2 ]; then
+      echo 'mInputShown=true mIsInputViewShown=true'
     else
-      echo 'mResumedActivity: ActivityRecord{abc u0 com.demo.target/.MainActivity t12}'
+      echo 'mInputShown=false mIsInputViewShown=false'
     fi
     ;;
 esac
@@ -112,7 +120,7 @@ printf '0\n' > "$watch_state/config/cooldown"
 printf '7\n' > "$watch_state/config/preinput"
 if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   set +e
-  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 4 sh "$ROOT/bin/watcher.sh" &
+  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 6 sh "$ROOT/bin/watcher.sh" &
   watcher_job=$!
   tries=0
   while [ ! -d "$watch_state/watcher.lock" ] && [ "$tries" -lt 40 ]; do sleep 0.05; tries=$((tries + 1)); done
@@ -126,7 +134,8 @@ if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   [ "$watch_code" -eq 124 ] || [ "$watch_code" -eq 143 ] || { echo "watcher test exited $watch_code" >&2; exit 1; }
   assert_equal "$(cat "$test_root/trigger-result")" 7
   [ "$(wc -l < "$test_root/trigger-result" | tr -d ' ')" = 1 ] || { echo 'watcher triggered more than once' >&2; exit 1; }
-  [ "$(grep -c '前台检测服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
+  [ "$(grep -c '键盘回撤检测服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
+  [ "$(grep -c '目标应用键盘已回撤' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'keyboard retract did not trigger exactly once' >&2; exit 1; }
 fi
 
 echo 'module tests passed'

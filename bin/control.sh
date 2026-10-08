@@ -16,9 +16,10 @@ case "$1" in
     echo "package=$(read_value package com.example.app)"
     echo "script=$(read_value script "$MODDIR/scripts/target.sh")"
     echo "interval=$(read_value interval 2)"
-    echo "events=foreground"
+    echo "events=keyboard_hidden"
     echo "cooldown=$(read_value cooldown 2)"
     echo "foreground=$(foreground_package)"
+    keyboard_visible && echo "keyboard=visible" || echo "keyboard=hidden"
     pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
     pid_is_watcher "$pid" && kill -0 "$pid" 2>/dev/null && echo "watcher=running" || echo "watcher=stopped"
     ;;
@@ -31,14 +32,14 @@ case "$1" in
     case "$interval" in ''|*[!0-9]*) echo "轮询间隔必须是整数" >&2; exit 2 ;; esac
     [ "$interval" -ge 1 ] && [ "$interval" -le 60 ] || { echo "轮询间隔必须在 1 到 60 秒之间" >&2; exit 2; }
     case "$enabled" in 0|1) ;; *) echo "启用值只能是 0 或 1" >&2; exit 2 ;; esac
-    [ "$events" = "foreground" ] || { echo "只支持前台应用触发" >&2; exit 2; }
+    [ "$events" = "keyboard_hidden" ] || { echo "只支持目标应用键盘回撤触发" >&2; exit 2; }
     case "$cooldown" in ''|*[!0-9]*) echo "冷却时间必须是整数" >&2; exit 2 ;; esac
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
     write_value enabled "$enabled"; write_value events "$events"; write_value cooldown "$cooldown"
     if [ "$package" != "$old_package" ] || { [ "$old_enabled" != "1" ] && [ "$enabled" = "1" ]; }; then
       clear_app_session_claim
-      rm -f "$CONFIG/last_foreground" "$CONFIG/last_trigger"
+      rm -f "$CONFIG/last_trigger"
     fi
     echo "配置已保存"
     ;;
@@ -48,7 +49,7 @@ case "$1" in
     monkey -p "$package" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     code=$?
     if [ "$code" -eq 0 ]; then
-      echo "已启动 $package；进入前台后由监听器执行脚本"
+      echo "已启动 $package；请先弹出键盘，再收起键盘以触发脚本"
     else
       echo "无法启动 $package" >&2
     fi

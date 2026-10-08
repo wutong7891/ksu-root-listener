@@ -38,16 +38,17 @@ async function loadStatus() {
     $('enabled').checked = status.enabled === '1';
     $('scriptInput').value = (await rootExec(`${quote(CONTROL)} get-preinput`)).stdout.replace(/\n$/, '');
     const foreground = status.foreground || '未识别';
-    $('supportNotice').textContent = `只检测前台应用 · 当前前台：${foreground}`;
+    const keyboard = status.keyboard === 'visible' ? '已弹出' : '已收起';
+    $('supportNotice').textContent = `当前前台：${foreground} · 键盘：${keyboard}`;
     $('supportNotice').classList.add('ok');
     const running = status.watcher === 'running';
-    $('watcherBadge').textContent = running ? (status.enabled === '1' ? '前台监听中' : '服务待命') : '服务未运行';
+    $('watcherBadge').textContent = running ? (status.enabled === '1' ? '键盘监听中' : '服务待命') : '服务未运行';
     $('watcherBadge').classList.toggle('on', running && status.enabled === '1');
   } catch (error) { $('watcherBadge').textContent = '连接失败'; toast(error.message); }
 }
 
 async function saveConfig() {
-  const events = 'foreground';
+  const events = 'keyboard_hidden';
   const args = [$('package').value.trim(), $('script').value.trim(), $('interval').value, $('enabled').checked ? '1' : '0', events, $('cooldown').value];
   try {
     await rootExec(`${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
