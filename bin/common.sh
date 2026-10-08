@@ -138,18 +138,53 @@ ui_has_expected_input() {
     -e 's/>/\&gt;/g' \
     -e 's/"/\&quot;/g' \
     -e "s/'/\\\&apos;/g")
-  # --compressed 明显缩短部分 ROM 等待界面空闲的时间。限制单次快照时长，
-  # 防止系统 UIAutomator 异常时卡死整个常驻监听器。
-  if command -v timeout >/dev/null 2>&1; then
-    timeout 2 uiautomator dump --compressed /proc/self/fd/1 2>/dev/null
-  else
-    uiautomator dump --compressed /proc/self/fd/1 2>/dev/null
-  fi | awk -v expected="$xml_expected" '
+  ui_xml=''
+  dump_mode=$(cat "$CONFIG/ui_dump_mode" 2>/dev/null)
+
+  # 优先使用纯内存管道；部分 ROM 禁止 UIAutomator 写 /proc/self/fd/1，
+  # 此时自动切换到模块私有临时文件，并在读取后立即删除。
+  if [ "$dump_mode" != "file" ]; then
+    if command -v timeout >/dev/null 2>&1; then
+      ui_xml=$(timeout 5 uiautomator dump --compressed /proc/self/fd/1 2>/dev/null)
+    else
+      ui_xml=$(uiautomator dump --compressed /proc/self/fd/1 2>/dev/null)
+    fi
+    case "$ui_xml" in *'<hierarchy'*) printf 'stdout\n' > "$CONFIG/ui_dump_mode" ;; *) ui_xml='' ;; esac
+  fi
+
+  if [ -z "$ui_xml" ]; then
+    ui_tmp="$STATE_DIR/.ui-dump.$$"
+    rm -f "$ui_tmp"
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 7 uiautomator dump --compressed "$ui_tmp" >/dev/null 2>&1 || \
+        timeout 7 uiautomator dump "$ui_tmp" >/dev/null 2>&1
+    else
+      uiautomator dump --compressed "$ui_tmp" >/dev/null 2>&1 || \
+        uiautomator dump "$ui_tmp" >/dev/null 2>&1
+    fi
+    if [ -s "$ui_tmp" ]; then
+      ui_xml=$(cat "$ui_tmp" 2>/dev/null)
+      printf 'file\n' > "$CONFIG/ui_dump_mode"
+    fi
+    rm -f "$ui_tmp"
+  fi
+
+  if [ -z "$ui_xml" ]; then
+    failure_marker="$STATE_DIR/ui_dump_failed"
+    if [ ! -f "$failure_marker" ]; then
+      printf '1\n' > "$failure_marker"
+      printf '[%s] UIAutomator 无法读取当前界面；该 ROM 可能不支持 Root 输入框检测\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$STATE_DIR/logs/trigger.log"
+    fi
+    return 2
+  fi
+  rm -f "$STATE_DIR/ui_dump_failed"
+
+  printf '%s\n' "$ui_xml" | awk -v expected="$xml_expected" '
     BEGIN { RS = "<node"; matched = 0 }
-    index($0, "editable=\"true\"") &&
     index($0, "focused=\"true\"") &&
-    index($0, "password=\"false\"") &&
-    index($0, "text=\"" expected "\"") { matched = 1; exit }
+    !index($0, "password=\"true\"") &&
+    (index($0, "text=\"" expected "\"") ||
+     index($0, "content-desc=\"" expected "\"")) { matched = 1; exit }
     END { exit matched ? 0 : 1 }
   '
 }

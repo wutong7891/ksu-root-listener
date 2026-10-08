@@ -120,7 +120,12 @@ command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/dumpsys"
 cat > "$mock_bin/uiautomator" <<SCRIPT
 #!/bin/sh
 printf 'probe\n' >> "$test_root/ui-probe-count"
-printf '%s\n' '<hierarchy><node text="123456" class="android.widget.EditText" password="false" focused="true" editable="true" /></hierarchy>'
+last=''
+for arg in "\$@"; do last="\$arg"; done
+case "\$last" in
+  /proc/self/fd/1) exit 1 ;;
+  *) printf '%s\n' '<hierarchy><node text="123456" class="android.view.View" focused="true" /></hierarchy>' > "\$last" ;;
+esac
 SCRIPT
 command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/uiautomator"
 cat > "$mock_bin/timeout" <<'SCRIPT'
@@ -161,6 +166,7 @@ assert_equal "$(cat "$test_root/trigger-result")" 7
 [ "$(wc -l < "$test_root/trigger-result" | tr -d ' ')" = 1 ] || { echo 'watcher triggered more than once' >&2; exit 1; }
 [ "$(grep -c '前台与输入数字检测服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
 [ "$(grep -c '目标应用输入数字匹配' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'input match did not trigger exactly once' >&2; exit 1; }
+[ "$(cat "$watch_state/config/ui_dump_mode")" = file ] || { echo 'UIAutomator file fallback was not selected' >&2; exit 1; }
 
 # 空数字必须完全采用 v11 前台触发，且绝不能调用 UIAutomator。
 probes_before_blank=$(wc -l < "$test_root/ui-probe-count" | tr -d ' ')

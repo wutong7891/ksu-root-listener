@@ -133,6 +133,7 @@ async function refreshLogs() {
 
 $('save').addEventListener('click', saveConfig);
 $('openApp').addEventListener('click', () => runControl('open'));
+$('checkInput').addEventListener('click', () => runControl('check-input'));
 $('runScript').addEventListener('click', runScriptWithInput);
 $('execute').addEventListener('click', executeConsole);
 $('showRoot').addEventListener('click', () => { $('command').value = 'pwd && ls -la /'; executeConsole(); });

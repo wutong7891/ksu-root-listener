@@ -54,6 +54,7 @@ case "$1" in
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
     write_value enabled "$enabled"; write_value events "$events"; write_value cooldown "$cooldown"
+    rm -f "$CONFIG/ui_dump_mode" "$STATE_DIR/ui_dump_failed"
     if [ "$package" != "$old_package" ] || { [ "$old_enabled" != "1" ] && [ "$enabled" = "1" ]; }; then
       clear_app_session_claim
       rm -f "$CONFIG/last_trigger"
@@ -105,6 +106,20 @@ case "$1" in
     if [ -n "$2" ]; then write_value expected_input "$2"; else : > "$CONFIG/expected_input"; fi
     [ -n "$2" ] && echo "激活数字已保存" || echo "激活数字已清空，将使用 v11 前台触发模式"
     ;;
+  check-input)
+    expected=$(read_value expected_input '')
+    if [ -z "$expected" ]; then
+      echo "mode=v11_foreground"
+      echo "result=input_check_skipped"
+    elif ui_has_expected_input "$expected"; then
+      echo "mode=input_match"
+      echo "result=matched"
+    else
+      code=$?
+      echo "mode=input_match"
+      [ "$code" -eq 2 ] && echo "result=uiautomator_unavailable" || echo "result=not_matched"
+    fi
+    ;;
   list-dir)
     path="$2"; case "$path" in /*) ;; *) echo "目录必须是绝对路径" >&2; exit 2 ;; esac
     [ -d "$path" ] || { echo "目录不存在: $path" >&2; exit 2; }
@@ -119,6 +134,6 @@ case "$1" in
     reload_watcher
     echo "监听器已强制重载为当前模块版本"
     ;;
-  *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|get-expected|set-expected|list-dir|log|clear-log|restart}" >&2; exit 1 ;;
+  *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|get-expected|set-expected|check-input|list-dir|log|clear-log|restart}" >&2; exit 1 ;;
 esac
 

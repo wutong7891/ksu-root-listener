@@ -33,9 +33,10 @@
       <div class="buttons">
         <button id="save" class="primary">保存监听配置</button>
         <button id="openApp">打开应用</button>
+        <button id="checkInput">检测当前输入</button>
         <button id="runScript">使用预输入执行</button>
       </div>
-      <p class="hint">启用后约每 0.25 秒发现目标应用。空数字模式不调用 UIAutomator，进入前台立即执行；数字模式进入目标应用后约每 0.10 秒发起输入检查。保存配置会强制重载当前版本监听器，无需重启手机。脚本由 Root 从 <code>/</code> 执行。</p>
+      <p class="hint">启用后约每 0.25 秒发现目标应用。空数字模式不调用 UIAutomator，进入前台立即执行；数字模式进入目标应用后约每 0.10 秒发起输入检查。“检测当前输入”可显示 matched、not_matched 或 uiautomator_unavailable。保存配置会强制重载当前版本监听器。脚本由 Root 从 <code>/</code> 执行。</p>
     </section>
 
     <section class="card">

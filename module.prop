@@ -1,7 +1,7 @@
 id=ksu_app_watcher
 name=KSU 前台与输入数字监听 Root 控制台
 version=内测版本
-versionCode=17
+versionCode=18
 author=无痛
 description=未设置数字时按 v11 在应用进入前台执行；设置数字时匹配后立即以 Root 执行，无需回车。
 
