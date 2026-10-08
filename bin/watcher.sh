@@ -2,22 +2,36 @@
 
 MODDIR=${0%/*}
 MODDIR=${MODDIR%/*}
-CONFIG="$MODDIR/config"
-TRIGGER_LOG="$MODDIR/logs/trigger.log"
-PIDFILE="$MODDIR/watcher.pid"
-SEQFILE="$MODDIR/config/last_seq"
-BOOTFILE="$MODDIR/config/last_boot_id"
+STATE_DIR=${KSU_WATCHER_STATE_DIR:-/data/adb/ksu_app_watcher}
+CONFIG="$STATE_DIR/config"
+TRIGGER_LOG="$STATE_DIR/logs/trigger.log"
+PIDFILE="$STATE_DIR/watcher.pid"
+SEQFILE="$CONFIG/last_seq"
+BOOTFILE="$CONFIG/last_boot_id"
+SESSION_BOOTFILE="$CONFIG/session_boot_id"
 SULOG_DIR="/data/adb/ksu/log"
 
-mkdir -p "$CONFIG" "$MODDIR/logs"
+mkdir -p "$CONFIG" "$STATE_DIR/logs"
+. "$MODDIR/bin/common.sh"
 
 if [ -f "$PIDFILE" ]; then
   old_pid=$(cat "$PIDFILE" 2>/dev/null)
-  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then exit 0; fi
+  if pid_is_watcher "$old_pid" && kill -0 "$old_pid" 2>/dev/null; then exit 0; fi
+  rm -f "$PIDFILE"
 fi
 
 echo $$ > "$PIDFILE"
 trap 'rm -f "$PIDFILE"' EXIT INT TERM
+
+# 前台会话只在本次开机有效，避免重启后沿用旧状态而漏掉第一次触发。
+session_boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+saved_session_boot_id=$(cat "$SESSION_BOOTFILE" 2>/dev/null)
+if [ -n "$session_boot_id" ] && [ "$session_boot_id" != "$saved_session_boot_id" ]; then
+  rm -f "$CONFIG/last_foreground" "$CONFIG/app_session_triggered" "$CONFIG/last_trigger"
+  printf '%s\n' "$session_boot_id" > "$SESSION_BOOTFILE"
+fi
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] KernelSU 后台监听服务已启动，pid=$$" >> "$TRIGGER_LOG"
 
 read_value() {
   file="$1"; fallback="$2"
@@ -27,12 +41,6 @@ read_value() {
 package_app_id() {
   dumpsys package "$1" 2>/dev/null \
     | sed -n 's/^[[:space:]]*userId=\([0-9][0-9]*\).*/\1/p' \
-    | head -n 1
-}
-
-foreground_package() {
-  dumpsys activity activities 2>/dev/null \
-    | sed -n 's/.*\(mResumedActivity\|topResumedActivity\).* u[0-9][0-9]* \([A-Za-z0-9._]*\)\/.*/\2/p' \
     | head -n 1
 }
 
@@ -89,6 +97,13 @@ while true; do
   foreground=$(foreground_package)
   last_foreground=$(read_value last_foreground '')
   if [ -n "$foreground" ] && [ "$foreground" != "$last_foreground" ]; then
+    manual_open_pid=$(read_value manual_open_pid '')
+    if [ "$foreground" = "$package" ] && [ -n "$manual_open_pid" ] \
+      && kill -0 "$manual_open_pid" 2>/dev/null \
+      && tr '\000' ' ' < "/proc/$manual_open_pid/cmdline" 2>/dev/null | grep -F "$MODDIR/bin/control.sh" >/dev/null 2>&1; then
+      sleep "$interval"
+      continue
+    fi
     printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
     if [ -n "$package" ] && [ "$foreground" = "$package" ]; then
       now=$(date +%s)

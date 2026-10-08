@@ -37,6 +37,10 @@ jobs:
             shellcheck -S error -s sh "$script"
           done < <(find . -type f -name '*.sh' -print0)
 
+      - name: Run module tests
+        shell: bash
+        run: sh tests/test_module.sh
+
       - name: Build flashable ZIP
         id: package
         shell: bash
@@ -50,7 +54,8 @@ jobs:
             --exclude '.github/' \
             --exclude 'dist/' \
             --exclude 'staging/' \
-            --exclude 'README.md'
+            --exclude 'README.md' \
+            --exclude 'tests/'
           (cd staging && zip -9 -r "../dist/${artifact}" .)
           unzip -t "dist/${artifact}"
           unzip -Z1 "dist/${artifact}" | grep -qx 'module.prop'
@@ -59,7 +64,8 @@ jobs:
       - name: Upload module artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package.outputs.artifact }}
+          # GitHub 会再套一层 Artifact ZIP；下载后需取出里面这个可刷写 ZIP。
+          name: extract-first-${{ steps.package.outputs.artifact }}
           path: dist/${{ steps.package.outputs.artifact }}
           if-no-files-found: error
 

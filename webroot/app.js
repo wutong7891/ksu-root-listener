@@ -44,7 +44,10 @@ async function loadStatus() {
     $('eventIoctl').checked = events.includes('ioctl_grant_root');
     $('eventExec').checked = events.includes('root_execve');
     const supported = status.sulog === 'supported';
-    $('supportNotice').textContent = supported ? '✓ 当前内核支持 sulog Root监听' : `⚠ sulog 状态：${status.sulog || '不可用'}；需要使用你的定制 KernelSU 内核与 ksud`;
+    const foreground = status.foreground || '未识别';
+    $('supportNotice').textContent = supported
+      ? `✓ sulog 可用 · 当前前台：${foreground}`
+      : `前台应用监听可用 · 当前前台：${foreground} · sulog：${status.sulog || '不可用'}`;
     $('supportNotice').classList.toggle('ok', supported);
     const running = status.watcher === 'running';
     $('watcherBadge').textContent = running ? (status.enabled === '1' ? 'Root监听中' : '服务待命') : '服务未运行';

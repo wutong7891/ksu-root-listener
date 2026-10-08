@@ -2,10 +2,12 @@
 
 MODDIR=${0%/*}
 MODDIR=${MODDIR%/*}
-CONFIG="$MODDIR/config"
-TRIGGER_LOG="$MODDIR/logs/trigger.log"
+STATE_DIR=${KSU_WATCHER_STATE_DIR:-/data/adb/ksu_app_watcher}
+CONFIG="$STATE_DIR/config"
+TRIGGER_LOG="$STATE_DIR/logs/trigger.log"
 SULOG_DIR="/data/adb/ksu/log"
-mkdir -p "$CONFIG" "$MODDIR/logs"
+mkdir -p "$CONFIG" "$STATE_DIR/logs"
+. "$MODDIR/bin/common.sh"
 
 read_value() { [ -f "$CONFIG/$1" ] && cat "$CONFIG/$1" 2>/dev/null || printf '%s' "$2"; }
 write_value() { tmp="$CONFIG/.$1.tmp.$$"; printf '%s\n' "$2" > "$tmp" && mv -f "$tmp" "$CONFIG/$1"; }
@@ -20,8 +22,9 @@ case "$1" in
     echo "events=$(read_value events sucompat,ioctl_grant_root)"
     echo "cooldown=$(read_value cooldown 2)"
     echo "sulog=$(sulog_status)"
-    pid=$(cat "$MODDIR/watcher.pid" 2>/dev/null)
-    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "watcher=running" || echo "watcher=stopped"
+    echo "foreground=$(foreground_package)"
+    pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
+    pid_is_watcher "$pid" && kill -0 "$pid" 2>/dev/null && echo "watcher=running" || echo "watcher=stopped"
     ;;
   configure)
     package="$2"; script="$3"; interval="$4"; enabled="$5"; events="$6"; cooldown="$7"
@@ -36,9 +39,8 @@ case "$1" in
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
     write_value enabled "$enabled"; write_value events "$events"; write_value cooldown "$cooldown"
-    if [ "$enabled" = "1" ]; then
-      [ "$(sulog_status)" = "supported" ] || { echo "当前内核/ksud 不支持 sulog Root监听" >&2; exit 3; }
-      ksud feature set sulog 1 >/dev/null 2>&1 || { echo "无法启用 sulog" >&2; exit 3; }
+    if [ "$enabled" = "1" ] && [ "$(sulog_status)" = "supported" ]; then
+      ksud feature set sulog 1 >/dev/null 2>&1
       ksud feature save >/dev/null 2>&1
       ksud debug sulogd >/dev/null 2>&1
     fi
@@ -47,8 +49,22 @@ case "$1" in
   open)
     package=$(read_value package '')
     [ -n "$package" ] || { echo "尚未配置包名" >&2; exit 2; }
+    write_value manual_open_pid "$$"
+    trap 'rm -f "$CONFIG/manual_open_pid"' EXIT INT TERM
     monkey -p "$package" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-    code=$?; [ "$code" -eq 0 ] && echo "已请求启动 $package" || echo "无法启动 $package" >&2; exit "$code"
+    code=$?
+    if [ "$code" -eq 0 ]; then
+      # WebUI 主动打开时直接执行一次，并写入会话标记，避免监听器随后重复触发。
+      write_value last_foreground "$package"
+      write_value app_session_triggered 1
+      write_value last_trigger "$(date +%s)"
+      echo "已启动 $package，开始执行脚本"
+      "$0" run
+      code=$?
+    else
+      echo "无法启动 $package" >&2
+    fi
+    exit "$code"
     ;;
   run)
     script=$(read_value script "$MODDIR/scripts/target.sh")
@@ -86,11 +102,11 @@ case "$1" in
   log) [ -f "$TRIGGER_LOG" ] && tail -n "${2:-120}" "$TRIGGER_LOG" || echo "暂无触发日志" ;;
   clear-log) : > "$TRIGGER_LOG"; echo "触发日志已清空" ;;
   restart)
-    pid=$(cat "$MODDIR/watcher.pid" 2>/dev/null)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
+    if pid_is_watcher "$pid" && kill -0 "$pid" 2>/dev/null; then
       echo "监听器正在运行；配置会自动加载，无需重启"
     else
-      rm -f "$MODDIR/watcher.pid"
+      rm -f "$STATE_DIR/watcher.pid"
       nohup "$MODDIR/bin/watcher.sh" </dev/null >/dev/null 2>&1 &
       echo "监听器已启动；建议重启手机以确保由 KernelSU 服务托管"
     fi

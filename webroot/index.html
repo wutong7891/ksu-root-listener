@@ -34,11 +34,11 @@
         <label class="switchRow">启用监听<input id="enabled" type="checkbox"></label>
       </div>
       <div class="buttons">
-        <button id="save" class="primary">保存并重启监听</button>
+        <button id="save" class="primary">保存监听配置</button>
         <button id="openApp">打开应用</button>
         <button id="runScript">使用预输入执行</button>
       </div>
-      <p class="hint">匹配目标应用 UID 的 Root 请求。脚本由 Root 从 <code>/</code> 执行，并收到 KSU_SULOG_* 环境变量。</p>
+      <p class="hint">目标应用每次进入前台时执行一次；同次停留期间不重复。预输入会作为脚本标准输入。脚本由 Root 从 <code>/</code> 执行，并收到 KSU_SULOG_* 环境变量。</p>
     </section>
 
     <section class="card">

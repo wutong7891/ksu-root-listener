@@ -1,4 +1,4 @@
-# KSU Root监听与 Root 控制台 2.0
+# KSU Root监听与 Root 控制台（内测版）
 
 此模块按照 `wutong7891/KernelSU` 源码中的 `sulog` 与 Root 终端行为制作。
 
@@ -9,20 +9,21 @@
 - KernelSU 在开机的 `late_start service` 阶段执行模块的 `service.sh`。
 - `service.sh` 启动独立监听进程，不依赖 KernelSU 管理器 App 常驻后台。
 - 管理器被划掉或强制停止后，已经启动的模块监听仍会运行。
-- 监听目标应用发起的 `sucompat` 或 `ioctl_grant_root` 事件，按照应用 UID 匹配。
+- 轮询 Android 当前前台应用；目标应用每次进入前台时执行一次，停留期间不会重复。
+- 同时监听目标应用发起的 `sucompat` 或 `ioctl_grant_root` 事件，按照应用 UID 匹配。
 - WebUI 同时显示全部 Root 应用事件，可按类型筛选并搜索应用、UID、进程和命令。
 - 提供脚本预输入台；每一行作为一次输入并附加回车，自动送入脚本标准输入。
 - 命中事件后，以 Root 身份、从 `/` 目录执行指定 Shell 文件。
 
 ## 必要条件
 
-此功能依赖你的定制 KernelSU 内核和 `ksud` 提供 `sulog` 功能。WebUI 会运行：
+应用前台监听不依赖 `sulog`。Root 请求记录依赖你的定制 KernelSU 内核和 `ksud` 提供 `sulog` 功能。WebUI 会运行：
 
 ```sh
 ksud feature check sulog
 ```
 
-只有结果为 `supported` 才能开启真正的 Root 请求监听。普通官方 KernelSU 如果没有该功能，模块仍可使用 Root 文件浏览器、控制台和手动脚本执行，但不能捕获 Root 请求。
+只有结果为 `supported` 才能开启 Root 请求监听。普通官方 KernelSU 如果没有该功能，仍可使用应用前台触发、文件浏览器、控制台和脚本执行。
 
 ## 安装与配置
 
@@ -31,7 +32,7 @@ ksud feature check sulog
 3. 打开模块 WebUI，填写目标应用包名与 Shell 文件绝对路径。
 4. 建议保持“经典 SU 请求”和“ioctl Root 授权”开启。
 5. 开启“启用监听”，保存配置。
-6. 点击“打开应用”；当该应用请求 Root 时，模块会自动执行脚本。
+6. 点击“打开应用”可立即测试；平时从桌面打开目标应用也会自动执行一次。
 
 ## 脚本预输入台
 
@@ -60,7 +61,8 @@ y
 ## 日志
 
 - 内核 Root监听日志：`/data/adb/ksu/log/sulog-*.log`
-- 模块触发日志：`/data/adb/modules/ksu_app_watcher/logs/trigger.log`
+- 模块触发日志：`/data/adb/ksu_app_watcher/logs/trigger.log`
+- 持久化配置：`/data/adb/ksu_app_watcher/config/`
 
 ## 安全说明
 
