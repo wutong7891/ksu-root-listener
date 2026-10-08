@@ -21,7 +21,7 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 echo $$ > "$PIDFILE"
-cleanup() { rm -f "$PIDFILE"; }
+cleanup() { release_run_lock; rm -f "$PIDFILE"; }
 trap cleanup EXIT
 trap 'exit 0' INT TERM
 
@@ -120,12 +120,10 @@ while true; do
           if [ -f "$script" ]; then
             export KSU_SULOG_TYPE="app_foreground" KSU_SULOG_UID="" KSU_SULOG_PACKAGE="$package"
             export KSU_SULOG_PID="" KSU_SULOG_COMM="$package" KSU_SULOG_FILE="$script" KSU_SULOG_ARGV=""
-            if [ -s "$CONFIG/preinput" ]; then
-              (cd / && sh "$script") < "$CONFIG/preinput"
-            else
-              (cd / && sh "$script")
-            fi
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $?"
+            execute_script_file "$script"
+            code=$?
+            [ "$code" -eq 75 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] 已有脚本正在执行，本次跳过"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $code"
           else
             echo "脚本不存在: $script"
           fi
@@ -175,14 +173,14 @@ while true; do
       [ "$app_id" -eq "$target_app_id" ] 2>/dev/null || continue
       # 目标应用本次进入前台时已经执行过，忽略其后续 Root 事件，避免重复。
       session_triggered=$(read_value app_session_triggered 0)
-      foreground_now=$(foreground_package)
-      if [ "$foreground_now" = "$package" ] && [ "$session_triggered" = "1" ]; then continue; fi
+      [ "$session_triggered" = "1" ] && continue
       now=$(date +%s)
       elapsed=$((now - last_trigger))
       [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
       [ "$elapsed" -ge "$cooldown" ] 2>/dev/null || continue
       last_trigger=$now
       printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
+      printf '1\n' > "$CONFIG/app_session_triggered"
 
       comm=$(printf '%s\n' "$line" | sed -n 's/.* comm="\([^"]*\)".*/\1/p')
       file=$(printf '%s\n' "$line" | sed -n 's/.* file="\([^"]*\)".*/\1/p')
@@ -193,12 +191,10 @@ while true; do
           export KSU_SULOG_TYPE="$event_type" KSU_SULOG_UID="$uid" KSU_SULOG_PACKAGE="$package"
           export KSU_SULOG_PID="$(printf '%s\n' "$line" | sed -n 's/.* pid=\([0-9][0-9]*\).*/\1/p')"
           export KSU_SULOG_COMM="$comm" KSU_SULOG_FILE="$file" KSU_SULOG_ARGV="$argv"
-          if [ -s "$CONFIG/preinput" ]; then
-            (cd / && sh "$script") < "$CONFIG/preinput"
-          else
-            (cd / && sh "$script")
-          fi
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $?"
+          execute_script_file "$script"
+          code=$?
+          [ "$code" -eq 75 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] 已有脚本正在执行，本次跳过"
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $code"
         else
           echo "脚本不存在: $script"
         fi

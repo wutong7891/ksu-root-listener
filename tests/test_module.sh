@@ -43,6 +43,27 @@ input='1
 KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-preinput "$input" >/dev/null
 assert_equal "$(KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" run)" '<1>|<>|<确认>'
 
+if command -v sleep >/dev/null 2>&1; then
+cat > "$test_root/slow-script.sh" <<SCRIPT
+#!/bin/sh
+printf 'run\n' >> "$test_root/concurrent-result"
+sleep 1
+SCRIPT
+printf '%s\n' "$test_root/slow-script.sh" > "$test_root/config/script"
+: > "$test_root/config/preinput"
+KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" run >/dev/null &
+first_run=$!
+tries=0
+while [ ! -d "$test_root/run.lock" ] && [ "$tries" -lt 20 ]; do sleep 0.05; tries=$((tries + 1)); done
+set +e
+KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" run >/dev/null 2>&1
+second_code=$?
+set -e
+wait "$first_run"
+[ "$second_code" -eq 75 ] || { echo "concurrent run returned $second_code instead of 75" >&2; exit 1; }
+[ "$(wc -l < "$test_root/concurrent-result" | tr -d ' ')" = 1 ] || { echo 'concurrent execution was not deduplicated' >&2; exit 1; }
+fi
+
 mock_bin="$test_root/mock-bin"
 watch_state="$test_root/watch-state"
 mkdir -p "$mock_bin" "$watch_state/config" "$watch_state/logs"

@@ -6,6 +6,40 @@ pid_is_watcher() {
   tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -F "$MODDIR/bin/watcher.sh" >/dev/null 2>&1
 }
 
+acquire_run_lock() {
+  RUN_LOCK="$STATE_DIR/run.lock"
+  if mkdir "$RUN_LOCK" 2>/dev/null; then
+    printf '%s\n' "$$" > "$RUN_LOCK/pid"
+    return 0
+  fi
+  owner=$(cat "$RUN_LOCK/pid" 2>/dev/null)
+  if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then return 1; fi
+  rm -rf "$RUN_LOCK"
+  mkdir "$RUN_LOCK" 2>/dev/null || return 1
+  printf '%s\n' "$$" > "$RUN_LOCK/pid"
+}
+
+release_run_lock() {
+  RUN_LOCK="$STATE_DIR/run.lock"
+  owner=$(cat "$RUN_LOCK/pid" 2>/dev/null)
+  [ "$owner" = "$$" ] || return 0
+  rm -f "$RUN_LOCK/pid"
+  rmdir "$RUN_LOCK" 2>/dev/null
+}
+
+execute_script_file() {
+  target_script="$1"
+  acquire_run_lock || return 75
+  if [ -s "$CONFIG/preinput" ]; then
+    (cd / && sh "$target_script") < "$CONFIG/preinput"
+  else
+    (cd / && sh "$target_script")
+  fi
+  script_code=$?
+  release_run_lock
+  return "$script_code"
+}
+
 foreground_package() {
   pkg=$(dumpsys activity activities 2>/dev/null \
     | sed -n -e '/mResumedActivity/s/.*[[:space:]]u[0-9][0-9]*[[:space:]]\([A-Za-z0-9._]*\)\/.*/\1/p' \

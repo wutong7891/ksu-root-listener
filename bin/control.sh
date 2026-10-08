@@ -69,8 +69,10 @@ case "$1" in
   run)
     script=$(read_value script "$MODDIR/scripts/target.sh")
     [ -f "$script" ] || { echo "脚本不存在: $script" >&2; exit 2; }
-    cd / || exit 3
-    if [ -s "$CONFIG/preinput" ]; then sh "$script" < "$CONFIG/preinput"; else sh "$script"; fi
+    execute_script_file "$script"
+    code=$?
+    [ "$code" -eq 75 ] && echo "已有脚本正在执行，请稍后再试" >&2
+    exit "$code"
     ;;
   get-preinput)
     read_value preinput ''
