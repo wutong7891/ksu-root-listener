@@ -21,7 +21,9 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 echo $$ > "$PIDFILE"
-trap 'rm -f "$PIDFILE"' EXIT INT TERM
+cleanup() { rm -f "$PIDFILE"; }
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 # 前台会话只在本次开机有效，避免重启后沿用旧状态而漏掉第一次触发。
 session_boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)

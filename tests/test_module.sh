@@ -71,7 +71,7 @@ printf '0\n' > "$watch_state/config/cooldown"
 printf '7\n' > "$watch_state/config/preinput"
 if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   set +e
-  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout 3 sh "$ROOT/bin/watcher.sh"
+  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 3 sh "$ROOT/bin/watcher.sh"
   watch_code=$?
   set -e
   [ "$watch_code" -eq 124 ] || [ "$watch_code" -eq 143 ] || { echo "watcher test exited $watch_code" >&2; exit 1; }
