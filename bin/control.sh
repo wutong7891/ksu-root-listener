@@ -17,7 +17,7 @@ case "$1" in
     echo "script=$(read_value script "$MODDIR/scripts/target.sh")"
     echo "interval=$(read_value interval 2)"
     echo "active_interval=0.20"
-    echo "events=keyboard_hidden"
+    echo "events=input_match"
     echo "cooldown=$(read_value cooldown 2)"
     [ -s "$CONFIG/expected_input" ] && echo "expected_set=yes" || echo "expected_set=no"
     echo "foreground=$(foreground_package)"
@@ -34,7 +34,7 @@ case "$1" in
     case "$interval" in ''|*[!0-9]*) echo "轮询间隔必须是整数" >&2; exit 2 ;; esac
     [ "$interval" -ge 1 ] && [ "$interval" -le 60 ] || { echo "轮询间隔必须在 1 到 60 秒之间" >&2; exit 2; }
     case "$enabled" in 0|1) ;; *) echo "启用值只能是 0 或 1" >&2; exit 2 ;; esac
-    [ "$events" = "keyboard_hidden" ] || { echo "只支持目标应用键盘回撤触发" >&2; exit 2; }
+    [ "$events" = "input_match" ] || { echo "只支持目标应用输入数字匹配触发" >&2; exit 2; }
     case "$cooldown" in ''|*[!0-9]*) echo "冷却时间必须是整数" >&2; exit 2 ;; esac
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
@@ -58,7 +58,7 @@ case "$1" in
     monkey -p "$package" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     code=$?
     if [ "$code" -eq 0 ]; then
-      echo "已启动 $package；请先弹出键盘，再收起键盘以触发脚本"
+      echo "已启动 $package；在普通输入框中输入配置数字即可触发脚本，无需回车"
     else
       echo "无法启动 $package" >&2
     fi
@@ -84,8 +84,11 @@ case "$1" in
     ;;
   set-expected)
     [ "${#2}" -le 128 ] || { echo "激活字符不能超过 128 个字符" >&2; exit 2; }
+    if [ -n "$2" ]; then
+      case "$2" in *[!0-9]*) echo "激活内容只能包含数字 0-9" >&2; exit 2 ;; esac
+    fi
     if [ -n "$2" ]; then write_value expected_input "$2"; else : > "$CONFIG/expected_input"; fi
-    [ -n "$2" ] && echo "激活字符已保存" || echo "已关闭激活字符校验"
+    [ -n "$2" ] && echo "激活数字已保存" || echo "未设置激活数字，自动触发已关闭"
     ;;
   list-dir)
     path="$2"; case "$path" in /*) ;; *) echo "目录必须是绝对路径" >&2; exit 2 ;; esac

@@ -52,6 +52,11 @@ assert_equal "$(KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh
 # 激活字符允许留空；留空代表只检测键盘弹出与回撤。
 KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-expected '' >/dev/null
 [ ! -s "$test_root/config/expected_input" ] || { echo 'empty activation code was not saved' >&2; exit 1; }
+set +e
+KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-expected '12a3' >/dev/null 2>&1
+invalid_code=$?
+set -e
+[ "$invalid_code" -eq 2 ] || { echo 'non-numeric activation code was accepted' >&2; exit 1; }
 
 # 同一次前台会话只能被认领一次。
 STATE_DIR="$test_root"
@@ -97,23 +102,14 @@ case "\$1:\$2" in
     echo 'mResumedActivity: ActivityRecord{abc u0 com.demo.target/.MainActivity t12}'
     ;;
   input_method:)
-    count_file='$test_root/ime-count'
-    count=0
-    [ -f "\$count_file" ] && count=\$(cat "\$count_file")
-    count=\$((count + 1))
-    printf '%s\n' "\$count" > "\$count_file"
-    if [ "\$count" -le 2 ]; then
-      echo 'mInputShown=true mIsInputViewShown=true'
-    else
-      echo 'mInputShown=false mIsInputViewShown=false'
-    fi
+    echo 'mInputShown=false mIsInputViewShown=false'
     ;;
 esac
 SCRIPT
 command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/dumpsys"
 cat > "$mock_bin/uiautomator" <<'SCRIPT'
 #!/bin/sh
-printf '%s\n' '<hierarchy><node text="123abc" class="android.widget.EditText" password="false" focused="true" editable="true" /></hierarchy>'
+printf '%s\n' '<hierarchy><node text="123456" class="android.widget.EditText" password="false" focused="true" editable="true" /></hierarchy>'
 SCRIPT
 command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/uiautomator"
 cat > "$test_root/trigger.sh" <<SCRIPT
@@ -127,7 +123,7 @@ printf '%s\n' "$test_root/trigger.sh" > "$watch_state/config/script"
 printf '1\n' > "$watch_state/config/interval"
 printf '0\n' > "$watch_state/config/cooldown"
 printf '7\n' > "$watch_state/config/preinput"
-printf '123abc\n' > "$watch_state/config/expected_input"
+printf '123456\n' > "$watch_state/config/expected_input"
 if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   set +e
   PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 6 sh "$ROOT/bin/watcher.sh" &
@@ -144,8 +140,8 @@ if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   [ "$watch_code" -eq 124 ] || [ "$watch_code" -eq 143 ] || { echo "watcher test exited $watch_code" >&2; exit 1; }
   assert_equal "$(cat "$test_root/trigger-result")" 7
   [ "$(wc -l < "$test_root/trigger-result" | tr -d ' ')" = 1 ] || { echo 'watcher triggered more than once' >&2; exit 1; }
-  [ "$(grep -c '键盘回撤检测服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
-  [ "$(grep -c '目标应用键盘已回撤' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'keyboard retract did not trigger exactly once' >&2; exit 1; }
+  [ "$(grep -c '输入数字检测服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
+  [ "$(grep -c '目标应用输入数字匹配' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'input match did not trigger exactly once' >&2; exit 1; }
 fi
 
 echo 'module tests passed'

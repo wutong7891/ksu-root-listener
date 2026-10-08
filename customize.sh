@@ -4,7 +4,7 @@ SKIPUNZIP=0
 
 ui_print "- 正在安装 KSU 键盘回撤监听与 Root 控制台"
 ui_print "- 默认关闭监听，请安装后进入模块 WebUI 配置"
-ui_print "- 仅在目标应用前台完成键盘弹出并收起后触发"
+ui_print "- 仅在目标应用前台输入配置数字后触发，无需回车"
 
 STATE_DIR="/data/adb/ksu_app_watcher"
 CONFIG="$STATE_DIR/config"
@@ -21,11 +21,14 @@ done
 [ -f "$CONFIG/package" ] || echo com.example.app > "$CONFIG/package"
 [ -f "$CONFIG/script" ] || echo "$MODPATH/scripts/target.sh" > "$CONFIG/script"
 [ -f "$CONFIG/interval" ] || echo 2 > "$CONFIG/interval"
-[ -f "$CONFIG/events" ] || echo foreground > "$CONFIG/events"
-echo keyboard_hidden > "$CONFIG/events"
+[ -f "$CONFIG/events" ] || echo input_match > "$CONFIG/events"
+echo input_match > "$CONFIG/events"
 [ -f "$CONFIG/cooldown" ] || echo 2 > "$CONFIG/cooldown"
 [ -f "$CONFIG/preinput" ] || : > "$CONFIG/preinput"
 [ -f "$CONFIG/expected_input" ] || : > "$CONFIG/expected_input"
+# 新版只接受数字；升级自旧版本时清除不符合规则的旧激活内容。
+expected_input=$(cat "$CONFIG/expected_input" 2>/dev/null)
+case "$expected_input" in ''|*[!0-9]*) : > "$CONFIG/expected_input" ;; esac
 chmod 0700 "$STATE_DIR" "$CONFIG" "$STATE_DIR/logs"
 chmod 0600 "$CONFIG"/* 2>/dev/null
 
