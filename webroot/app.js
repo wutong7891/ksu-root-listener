@@ -75,6 +75,21 @@ async function runControl(action, target = 'terminal') {
   }
 }
 
+async function runScriptWithInput() {
+  $('terminal').textContent = '正在保存预输入并执行脚本…';
+  try {
+    const input = $('scriptInput').value;
+    const result = await rootExec(`${quote(CONTROL)} set-preinput ${quote(input)} && ${quote(CONTROL)} run`);
+    $('terminal').textContent = [result.stdout, result.stderr].filter(Boolean).join('\n') || '执行成功（无输出）';
+    toast('预输入已发送，脚本执行完成');
+  } catch (error) {
+    $('terminal').textContent = error.result
+      ? [error.result.stdout, error.result.stderr].filter(Boolean).join('\n')
+      : error.message;
+    toast('脚本执行失败');
+  }
+}
+
 function parentPath(path) {
   const clean = path.replace(/\/+$/, '');
   if (!clean || clean === '/') return '/';
@@ -201,7 +216,7 @@ async function refreshLogs() {
 
 $('save').addEventListener('click', saveConfig);
 $('openApp').addEventListener('click', () => runControl('open'));
-$('runScript').addEventListener('click', () => runControl('run'));
+$('runScript').addEventListener('click', runScriptWithInput);
 $('execute').addEventListener('click', executeConsole);
 $('showRoot').addEventListener('click', () => { $('command').value = 'pwd && ls -la /'; executeConsole(); });
 $('rootDir').addEventListener('click', () => browse('/'));

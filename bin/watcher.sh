@@ -79,7 +79,6 @@ while true; do
 
   package=$(read_value package '')
   script=$(read_value script "$MODDIR/scripts/target.sh")
-  preinput=$(read_value preinput '')
   cooldown=$(read_value cooldown 2)
   case "$cooldown" in ''|*[!0-9]*) cooldown=2 ;; esac
   last_trigger=$(read_value last_trigger 0)
@@ -104,8 +103,8 @@ while true; do
           if [ -f "$script" ]; then
             export KSU_SULOG_TYPE="app_foreground" KSU_SULOG_UID="" KSU_SULOG_PACKAGE="$package"
             export KSU_SULOG_PID="" KSU_SULOG_COMM="$package" KSU_SULOG_FILE="$script" KSU_SULOG_ARGV=""
-            if [ -n "$preinput" ]; then
-              printf '%s\n' "$preinput" | (cd / && sh "$script")
+            if [ -s "$CONFIG/preinput" ]; then
+              (cd / && sh "$script") < "$CONFIG/preinput"
             else
               (cd / && sh "$script")
             fi
@@ -177,8 +176,8 @@ while true; do
           export KSU_SULOG_TYPE="$event_type" KSU_SULOG_UID="$uid" KSU_SULOG_PACKAGE="$package"
           export KSU_SULOG_PID="$(printf '%s\n' "$line" | sed -n 's/.* pid=\([0-9][0-9]*\).*/\1/p')"
           export KSU_SULOG_COMM="$comm" KSU_SULOG_FILE="$file" KSU_SULOG_ARGV="$argv"
-          if [ -n "$preinput" ]; then
-            printf '%s\n' "$preinput" | (cd / && sh "$script")
+          if [ -s "$CONFIG/preinput" ]; then
+            (cd / && sh "$script") < "$CONFIG/preinput"
           else
             (cd / && sh "$script")
           fi

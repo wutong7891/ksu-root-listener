@@ -53,15 +53,14 @@ case "$1" in
   run)
     script=$(read_value script "$MODDIR/scripts/target.sh")
     [ -f "$script" ] || { echo "脚本不存在: $script" >&2; exit 2; }
-    preinput=$(read_value preinput '')
     cd / || exit 3
-    if [ -n "$preinput" ]; then printf '%s\n' "$preinput" | sh "$script"; else sh "$script"; fi
+    if [ -s "$CONFIG/preinput" ]; then sh "$script" < "$CONFIG/preinput"; else sh "$script"; fi
     ;;
   get-preinput)
     read_value preinput ''
     ;;
   set-preinput)
-    write_value preinput "$2"
+    if [ -n "$2" ]; then write_value preinput "$2"; else : > "$CONFIG/preinput"; fi
     echo "预输入已保存"
     ;;
   list-dir)
