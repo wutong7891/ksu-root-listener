@@ -1,6 +1,6 @@
-# KSU Root监听与 Root 控制台（内测版）
+# KSU 前台监听与 Root 控制台（内测版）
 
-此模块按照 `wutong7891/KernelSU` 源码中的 `sulog` 与 Root 终端行为制作。
+此模块只检测指定应用是否进入前台，并以 Root 执行配置的 Shell 文件。
 
 模块仓库自带 `.github/workflows/build-module.yml`。正式构建通过 GitHub Actions 完成，包括元数据校验、Shell 语法检查、ShellCheck、ZIP 完整性验证和 Artifact 上传。
 
@@ -10,31 +10,22 @@
 - `service.sh` 启动独立监听进程，不依赖 KernelSU 管理器 App 常驻后台。
 - 管理器被划掉或强制停止后，已经启动的模块监听仍会运行。
 - 轮询 Android 当前前台应用；目标应用每次进入前台时执行一次，停留期间不会重复。
-- 同时监听目标应用发起的 `sucompat` 或 `ioctl_grant_root` 事件，按照应用 UID 匹配。
-- 前台检测与 Root 日志使用同一个原子会话标记；两者同时命中时也只执行一次。
+- 目标应用位于后台时不触发，Root 请求也不会触发脚本。
 - 监听器使用原子单实例锁，避免两个后台监听进程造成顺序重复执行。
-- WebUI 同时显示全部 Root 应用事件，可按类型筛选并搜索应用、UID、进程和命令。
 - 提供脚本预输入台；每一行作为一次输入并附加回车，自动送入脚本标准输入。
-- 命中事件后，以 Root 身份、从 `/` 目录执行指定 Shell 文件。
+- 应用进入前台后，以 Root 身份、从 `/` 目录执行指定 Shell 文件。
 
 ## 必要条件
 
-应用前台监听不依赖 `sulog`。Root 请求记录依赖你的定制 KernelSU 内核和 `ksud` 提供 `sulog` 功能。WebUI 会运行：
-
-```sh
-ksud feature check sulog
-```
-
-只有结果为 `supported` 才能开启 Root 请求监听。普通官方 KernelSU 如果没有该功能，仍可使用应用前台触发、文件浏览器、控制台和脚本执行。
+需要 KernelSU 能正常运行模块的 `service.sh`。不需要 `sulog`，也不启用或读取 Root 事件日志。
 
 ## 安装与配置
 
 1. 从 GitHub Actions 下载并在 KernelSU 管理器安装构建出的模块 ZIP。
 2. 重启手机，使模块的 `service.sh` 自动启动。
 3. 打开模块 WebUI，填写目标应用包名与 Shell 文件绝对路径。
-4. 建议保持“经典 SU 请求”和“ioctl Root 授权”开启。
-5. 开启“启用监听”，保存配置。
-6. 点击“打开应用”可立即测试；平时从桌面打开目标应用也会自动执行一次。
+4. 开启“启用监听”，保存配置。
+5. 点击“打开应用”可立即测试；平时从桌面打开目标应用也会自动执行一次。
 
 ## 脚本预输入台
 
@@ -52,21 +43,15 @@ y
 
 触发脚本可以读取：
 
-- `KSU_SULOG_TYPE`：Root 事件类型。
-- `KSU_SULOG_UID`：请求来源 UID。
-- `KSU_SULOG_PID`：请求来源 PID。
-- `KSU_SULOG_COMM`：进程名。
-- `KSU_SULOG_FILE`：被执行文件。
-- `KSU_SULOG_ARGV`：命令参数。
-- `KSU_SULOG_PACKAGE`：配置的目标包名。
+- `KSU_TRIGGER_TYPE=app_foreground`
+- `KSU_TRIGGER_PACKAGE`：配置的目标包名。
 
 ## 日志
 
-- 内核 Root监听日志：`/data/adb/ksu/log/sulog-*.log`
 - 模块触发日志：`/data/adb/ksu_app_watcher/logs/trigger.log`
 - 持久化配置：`/data/adb/ksu_app_watcher/config/`
 
 ## 安全说明
 
-Root 控制台和触发脚本拥有不受限制的 Root 权限。请只选择和执行你完全信任的文件。模块不会使用无障碍服务，也不需要管理器 App 保持在后台。
+Root 控制台和触发脚本拥有不受限制的 Root 权限。请只选择和执行你完全信任的文件。模块不会使用无障碍服务，也不需要管理器 App 保持在后台；仅保留由 KernelSU 启动的轻量 Shell 监听进程。
 

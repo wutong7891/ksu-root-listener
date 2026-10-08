@@ -5,23 +5,19 @@ MODDIR=${MODDIR%/*}
 STATE_DIR=${KSU_WATCHER_STATE_DIR:-/data/adb/ksu_app_watcher}
 CONFIG="$STATE_DIR/config"
 TRIGGER_LOG="$STATE_DIR/logs/trigger.log"
-SULOG_DIR="/data/adb/ksu/log"
 mkdir -p "$CONFIG" "$STATE_DIR/logs"
 . "$MODDIR/bin/common.sh"
 
 read_value() { [ -f "$CONFIG/$1" ] && cat "$CONFIG/$1" 2>/dev/null || printf '%s' "$2"; }
 write_value() { tmp="$CONFIG/.$1.tmp.$$"; printf '%s\n' "$2" > "$tmp" && mv -f "$tmp" "$CONFIG/$1"; }
-sulog_status() { ksud feature check sulog 2>/dev/null | head -n 1; }
-
 case "$1" in
   status)
     echo "enabled=$(read_value enabled 0)"
     echo "package=$(read_value package com.example.app)"
     echo "script=$(read_value script "$MODDIR/scripts/target.sh")"
     echo "interval=$(read_value interval 2)"
-    echo "events=$(read_value events sucompat,ioctl_grant_root)"
+    echo "events=foreground"
     echo "cooldown=$(read_value cooldown 2)"
-    echo "sulog=$(sulog_status)"
     echo "foreground=$(foreground_package)"
     pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
     pid_is_watcher "$pid" && kill -0 "$pid" 2>/dev/null && echo "watcher=running" || echo "watcher=stopped"
@@ -35,8 +31,7 @@ case "$1" in
     case "$interval" in ''|*[!0-9]*) echo "轮询间隔必须是整数" >&2; exit 2 ;; esac
     [ "$interval" -ge 1 ] && [ "$interval" -le 60 ] || { echo "轮询间隔必须在 1 到 60 秒之间" >&2; exit 2; }
     case "$enabled" in 0|1) ;; *) echo "启用值只能是 0 或 1" >&2; exit 2 ;; esac
-    case "$events" in *root_execve*|*sucompat*|*ioctl_grant_root*) ;; *) echo "至少选择一种 Root 事件" >&2; exit 2 ;; esac
-    case "$events" in *[!a-z_,]*) echo "事件列表格式不正确" >&2; exit 2 ;; esac
+    [ "$events" = "foreground" ] || { echo "只支持前台应用触发" >&2; exit 2; }
     case "$cooldown" in ''|*[!0-9]*) echo "冷却时间必须是整数" >&2; exit 2 ;; esac
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
@@ -45,31 +40,16 @@ case "$1" in
       clear_app_session_claim
       rm -f "$CONFIG/last_foreground" "$CONFIG/last_trigger"
     fi
-    if [ "$enabled" = "1" ] && [ "$(sulog_status)" = "supported" ]; then
-      ksud feature set sulog 1 >/dev/null 2>&1
-      ksud feature save >/dev/null 2>&1
-      ksud debug sulogd >/dev/null 2>&1
-    fi
     echo "配置已保存"
     ;;
   open)
     package=$(read_value package '')
     [ -n "$package" ] || { echo "尚未配置包名" >&2; exit 2; }
-    write_value manual_open_pid "$$"
-    clear_app_session_claim
-    claim_app_session manual || { echo "无法认领本次应用会话" >&2; exit 75; }
-    trap 'rm -f "$CONFIG/manual_open_pid"' EXIT INT TERM
     monkey -p "$package" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     code=$?
     if [ "$code" -eq 0 ]; then
-      # WebUI 主动打开时直接执行一次，并写入会话标记，避免监听器随后重复触发。
-      write_value last_foreground "$package"
-      write_value last_trigger "$(date +%s)"
-      echo "已启动 $package，开始执行脚本"
-      "$0" run
-      code=$?
+      echo "已启动 $package；进入前台后由监听器执行脚本"
     else
-      clear_app_session_claim
       echo "无法启动 $package" >&2
     fi
     exit "$code"
@@ -97,18 +77,6 @@ case "$1" in
       printf '%s\t%s\n' "$kind" "$item"
     done
     ;;
-  root-log)
-    latest=$(ls -1t "$SULOG_DIR"/sulog-*.log 2>/dev/null | head -n 1)
-    [ -n "$latest" ] && tail -n "${2:-120}" "$latest" || echo "暂无 sulog 日志"
-    ;;
-  packages)
-    cmd package list packages -U 2>/dev/null
-    ;;
-  clear-root-log)
-    latest=$(ls -1t "$SULOG_DIR"/sulog-*.log 2>/dev/null | head -n 1)
-    [ -n "$latest" ] || { echo "暂无 sulog 日志"; exit 0; }
-    : > "$latest" && echo "Root监听日志已清空"
-    ;;
   log) [ -f "$TRIGGER_LOG" ] && tail -n "${2:-120}" "$TRIGGER_LOG" || echo "暂无触发日志" ;;
   clear-log) : > "$TRIGGER_LOG"; echo "触发日志已清空" ;;
   restart)
@@ -121,6 +89,6 @@ case "$1" in
       echo "监听器已启动；建议重启手机以确保由 KernelSU 服务托管"
     fi
     ;;
-  *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|list-dir|root-log|packages|clear-root-log|log|clear-log|restart}" >&2; exit 1 ;;
+  *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|list-dir|log|clear-log|restart}" >&2; exit 1 ;;
 esac
 

@@ -1,7 +1,5 @@
 const CONTROL = '/data/adb/modules/ksu_app_watcher/bin/control.sh';
 let callId = 0;
-let allEvents = [];
-const packageMap = new Map();
 const $ = (id) => document.getElementById(id);
 const quote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
@@ -39,28 +37,17 @@ async function loadStatus() {
     $('cooldown').value = status.cooldown || '2';
     $('enabled').checked = status.enabled === '1';
     $('scriptInput').value = (await rootExec(`${quote(CONTROL)} get-preinput`)).stdout.replace(/\n$/, '');
-    const events = (status.events || '').split(',');
-    $('eventSu').checked = events.includes('sucompat');
-    $('eventIoctl').checked = events.includes('ioctl_grant_root');
-    $('eventExec').checked = events.includes('root_execve');
-    const supported = status.sulog === 'supported';
     const foreground = status.foreground || '未识别';
-    $('supportNotice').textContent = supported
-      ? `✓ sulog 可用 · 当前前台：${foreground}`
-      : `前台应用监听可用 · 当前前台：${foreground} · sulog：${status.sulog || '不可用'}`;
-    $('supportNotice').classList.toggle('ok', supported);
+    $('supportNotice').textContent = `只检测前台应用 · 当前前台：${foreground}`;
+    $('supportNotice').classList.add('ok');
     const running = status.watcher === 'running';
-    $('watcherBadge').textContent = running ? (status.enabled === '1' ? 'Root监听中' : '服务待命') : '服务未运行';
+    $('watcherBadge').textContent = running ? (status.enabled === '1' ? '前台监听中' : '服务待命') : '服务未运行';
     $('watcherBadge').classList.toggle('on', running && status.enabled === '1');
   } catch (error) { $('watcherBadge').textContent = '连接失败'; toast(error.message); }
 }
 
 async function saveConfig() {
-  const events = [
-    $('eventSu').checked && 'sucompat',
-    $('eventIoctl').checked && 'ioctl_grant_root',
-    $('eventExec').checked && 'root_execve',
-  ].filter(Boolean).join(',');
+  const events = 'foreground';
   const args = [$('package').value.trim(), $('script').value.trim(), $('interval').value, $('enabled').checked ? '1' : '0', events, $('cooldown').value];
   try {
     await rootExec(`${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
@@ -136,84 +123,7 @@ async function executeConsole() {
   }
 }
 
-function decodeField(value) {
-  if (!value.startsWith('"')) return value;
-  return value.slice(1, -1)
-    .replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
-    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-}
-
-function parseEventLine(raw) {
-  const fields = {};
-  const regex = /([A-Za-z0-9_]+)=("(?:\\.|[^"])*"|[^\s]+)/g;
-  let match;
-  while ((match = regex.exec(raw))) fields[match[1]] = decodeField(match[2]);
-  return { raw, fields, type: fields.type || 'unknown' };
-}
-
-async function loadPackages() {
-  try {
-    const { stdout } = await rootExec(`${quote(CONTROL)} packages`);
-    stdout.split('\n').forEach((line) => {
-      const match = line.match(/^package:(.+) uid:(\d+)$/);
-      if (match) {
-        const appId = Number(match[2]) % 100000;
-        if (!packageMap.has(appId)) packageMap.set(appId, match[1]);
-      }
-    });
-  } catch (_) { /* UID 仍可显示 */ }
-}
-
-function eventLabel(type) {
-  return ({
-    sucompat: '经典 SU', ioctl_grant_root: 'Root 授权', root_execve: 'Root execve',
-    daemon_start: '守护进程启动', daemon_restart: '守护进程重启', dropped: '丢失事件',
-  })[type] || type;
-}
-
-function renderEvents() {
-  const root = $('events');
-  const query = $('eventSearch').value.trim().toLowerCase();
-  const filters = new Set([...document.querySelectorAll('[data-event-filter]:checked')].map((el) => el.dataset.eventFilter));
-  const visible = allEvents.filter((event) => {
-    const normalizedType = event.type.startsWith('daemon_') ? 'daemon_start' : event.type;
-    if (!filters.has(normalizedType) && !['dropped', 'unknown'].includes(event.type)) return false;
-    const uid = Number(event.fields.uid || -1);
-    const pkg = packageMap.get(uid % 100000) || '';
-    return !query || `${event.raw} ${pkg}`.toLowerCase().includes(query);
-  }).reverse();
-
-  root.innerHTML = '';
-  if (!visible.length) { root.innerHTML = '<span class="hint">没有符合条件的 Root 事件</span>'; return; }
-  visible.forEach((event) => {
-    const uid = Number(event.fields.uid || -1);
-    const pkg = packageMap.get(uid % 100000) || (uid >= 0 ? `UID ${uid}` : 'KernelSU');
-    const card = document.createElement('div'); card.className = 'eventCard';
-    const icon = document.createElement('img'); icon.className = 'eventIcon'; icon.alt = '';
-    if (pkg.includes('.')) icon.src = `ksu://icon/${pkg}`; else icon.style.visibility = 'hidden';
-    const content = document.createElement('div');
-    const title = document.createElement('div'); title.className = 'eventTitle';
-    const app = document.createElement('span'); app.textContent = pkg;
-    const type = document.createElement('span'); type.className = 'eventType'; type.textContent = eventLabel(event.type);
-    title.append(app, type);
-    const command = document.createElement('div'); command.className = 'eventCommand';
-    command.textContent = event.fields.argv || event.fields.file || event.fields.comm || event.type;
-    const meta = document.createElement('div'); meta.className = 'eventMeta';
-    meta.textContent = `UID ${event.fields.uid || '-'} · PID ${event.fields.pid || '-'} · ${event.fields.comm || '-'} · seq ${event.fields.seq || '-'}`;
-    content.append(title, command, meta); card.append(icon, content);
-    const raw = document.createElement('pre'); raw.className = 'eventRaw'; raw.textContent = event.raw; raw.hidden = true;
-    card.appendChild(raw); card.addEventListener('click', () => { raw.hidden = !raw.hidden; }); root.appendChild(card);
-  });
-}
-
 async function refreshLogs() {
-  try {
-    await loadPackages();
-    const output = (await rootExec(`${quote(CONTROL)} root-log 500`)).stdout;
-    allEvents = output.split('\n').filter((line) => line.includes('type=')).map(parseEventLine);
-    renderEvents();
-  } catch (e) { $('events').textContent = e.message; }
   try { $('log').textContent = (await rootExec(`${quote(CONTROL)} log 150`)).stdout || '暂无日志'; } catch (e) { $('log').textContent = e.message; }
 }
 
@@ -226,13 +136,9 @@ $('rootDir').addEventListener('click', () => browse('/'));
 $('upDir').addEventListener('click', () => browse(parentPath($('path').value)));
 $('goDir').addEventListener('click', () => browse($('path').value.trim()));
 $('path').addEventListener('keydown', (event) => { if (event.key === 'Enter') browse($('path').value.trim()); });
-$('refreshRootLog').addEventListener('click', refreshLogs);
-$('clearRootLog').addEventListener('click', async () => { await rootExec(`${quote(CONTROL)} clear-root-log`); allEvents = []; renderEvents(); toast('Root监听日志已清空'); });
 $('refreshLog').addEventListener('click', refreshLogs);
 $('clearLog').addEventListener('click', async () => { await runControl('clear-log', 'log'); await refreshLogs(); });
 document.querySelectorAll('[data-command]').forEach((button) => button.addEventListener('click', () => { $('command').value = button.dataset.command; $('command').focus(); }));
-document.querySelectorAll('[data-event-filter]').forEach((input) => input.addEventListener('change', renderEvents));
-$('eventSearch').addEventListener('input', renderEvents);
 
 $('command').value = localStorage.getItem('ksu-preinput') || 'pwd && ls -la /';
 loadStatus(); browse('/'); refreshLogs();

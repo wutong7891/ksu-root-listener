@@ -43,11 +43,11 @@ input='1
 KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-preinput "$input" >/dev/null
 assert_equal "$(KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" run)" '<1>|<>|<确认>'
 
-# 前台检测和 Root 日志只能有一个触发源认领同一次应用会话。
+# 同一次前台会话只能被认领一次。
 STATE_DIR="$test_root"
 CONFIG="$test_root/config"
-claim_app_session root
-if claim_app_session foreground; then
+claim_app_session foreground
+if claim_app_session duplicate; then
   echo 'same app session was claimed twice' >&2
   exit 1
 fi
@@ -98,12 +98,7 @@ case "\$1:\$2" in
     ;;
 esac
 SCRIPT
-cat > "$mock_bin/ksud" <<'SCRIPT'
-#!/bin/sh
-[ "$1:$2:$3" = 'feature:check:sulog' ] && echo unsupported
-exit 1
-SCRIPT
-command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/dumpsys" "$mock_bin/ksud"
+command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/dumpsys"
 cat > "$test_root/trigger.sh" <<SCRIPT
 #!/bin/sh
 IFS= read -r choice
@@ -131,7 +126,7 @@ if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   [ "$watch_code" -eq 124 ] || [ "$watch_code" -eq 143 ] || { echo "watcher test exited $watch_code" >&2; exit 1; }
   assert_equal "$(cat "$test_root/trigger-result")" 7
   [ "$(wc -l < "$test_root/trigger-result" | tr -d ' ')" = 1 ] || { echo 'watcher triggered more than once' >&2; exit 1; }
-  [ "$(grep -c '后台监听服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
+  [ "$(grep -c '前台检测服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
 fi
 
 echo 'module tests passed'

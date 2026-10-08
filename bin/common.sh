@@ -30,8 +30,7 @@ release_watcher_lock() {
   rmdir "$WATCHER_LOCK" 2>/dev/null
 }
 
-# 前台检测和 Root 日志是两个独立触发源。使用 mkdir 的原子性让本次应用
-# 前台会话只能被其中一个触发源认领，避免先 Root、后前台造成顺序重复执行。
+# 使用 mkdir 的原子性认领一次前台会话，避免多个监听进程重复执行。
 claim_app_session() {
   claim_source="$1"
   SESSION_CLAIM="$STATE_DIR/app_session.claim"

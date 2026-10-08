@@ -4,7 +4,7 @@ SKIPUNZIP=0
 
 ui_print "- 正在安装 KSU Root监听与 Root 控制台"
 ui_print "- 默认关闭监听，请安装后进入模块 WebUI 配置"
-ui_print "- 应用前台监听可独立工作；Root 事件记录需要内核和 ksud 支持 sulog"
+ui_print "- 仅检测目标应用进入前台，不监听后台 Root 事件"
 
 STATE_DIR="/data/adb/ksu_app_watcher"
 CONFIG="$STATE_DIR/config"
@@ -21,7 +21,8 @@ done
 [ -f "$CONFIG/package" ] || echo com.example.app > "$CONFIG/package"
 [ -f "$CONFIG/script" ] || echo "$MODPATH/scripts/target.sh" > "$CONFIG/script"
 [ -f "$CONFIG/interval" ] || echo 2 > "$CONFIG/interval"
-[ -f "$CONFIG/events" ] || echo sucompat,ioctl_grant_root > "$CONFIG/events"
+[ -f "$CONFIG/events" ] || echo foreground > "$CONFIG/events"
+echo foreground > "$CONFIG/events"
 [ -f "$CONFIG/cooldown" ] || echo 2 > "$CONFIG/cooldown"
 [ -f "$CONFIG/preinput" ] || : > "$CONFIG/preinput"
 chmod 0700 "$STATE_DIR" "$CONFIG" "$STATE_DIR/logs"
