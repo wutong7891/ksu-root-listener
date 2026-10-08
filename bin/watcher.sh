@@ -30,6 +30,12 @@ package_app_id() {
     | head -n 1
 }
 
+foreground_package() {
+  dumpsys activity activities 2>/dev/null \
+    | sed -n 's/.*\(mResumedActivity\|topResumedActivity\).* u[0-9][0-9]* \([A-Za-z0-9._]*\)\/.*/\2/p' \
+    | head -n 1
+}
+
 newest_sulog() {
   ls -1t "$SULOG_DIR"/sulog-*.log 2>/dev/null | head -n 1
 }
@@ -71,6 +77,46 @@ while true; do
   [ "$interval" -le 60 ] 2>/dev/null || interval=60
   if [ "$enabled" != "1" ]; then sleep "$interval"; continue; fi
 
+  package=$(read_value package '')
+  script=$(read_value script "$MODDIR/scripts/target.sh")
+  preinput=$(read_value preinput '')
+  cooldown=$(read_value cooldown 2)
+  case "$cooldown" in ''|*[!0-9]*) cooldown=2 ;; esac
+  last_trigger=$(read_value last_trigger 0)
+  case "$last_trigger" in ''|*[!0-9]*) last_trigger=0 ;; esac
+
+  # 普通打开应用并不会产生 SU 事件，因此同时监听前台应用切换。
+  # 只在应用从后台进入前台时触发一次，持续停留前台不会重复执行。
+  foreground=$(foreground_package)
+  last_foreground=$(read_value last_foreground '')
+  if [ -n "$foreground" ] && [ "$foreground" != "$last_foreground" ]; then
+    printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
+    if [ -n "$package" ] && [ "$foreground" = "$package" ]; then
+      now=$(date +%s)
+      elapsed=$((now - last_trigger))
+      [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
+      if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null; then
+        last_trigger=$now
+        printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
+        {
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 应用进入前台: package=$package"
+          if [ -f "$script" ]; then
+            export KSU_SULOG_TYPE="app_foreground" KSU_SULOG_UID="" KSU_SULOG_PACKAGE="$package"
+            export KSU_SULOG_PID="" KSU_SULOG_COMM="$package" KSU_SULOG_FILE="$script" KSU_SULOG_ARGV=""
+            if [ -n "$preinput" ]; then
+              printf '%s\n' "$preinput" | (cd / && sh "$script")
+            else
+              (cd / && sh "$script")
+            fi
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $?"
+          else
+            echo "脚本不存在: $script"
+          fi
+        } >> "$TRIGGER_LOG" 2>&1
+      fi
+    fi
+  fi
+
   if [ "$sulog_ready" != "1" ]; then
     if enable_sulog; then sulog_ready=1; else sleep "$interval"; continue; fi
   fi
@@ -89,12 +135,7 @@ while true; do
     fi
   fi
 
-  package=$(read_value package '')
-  script=$(read_value script "$MODDIR/scripts/target.sh")
-  preinput=$(read_value preinput '')
   events=$(read_value events 'sucompat,ioctl_grant_root')
-  cooldown=$(read_value cooldown 2)
-  case "$cooldown" in ''|*[!0-9]*) cooldown=2 ;; esac
   target_app_id=$(package_app_id "$package")
   latest=$(newest_sulog)
   last_seq=$(cat "$SEQFILE" 2>/dev/null)
