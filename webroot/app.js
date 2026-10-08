@@ -49,13 +49,13 @@ async function loadStatus() {
 }
 
 async function saveConfig() {
-  const events = 'input_match';
+  const events = 'foreground_or_input_match';
   const args = [$('package').value.trim(), $('script').value.trim(), $('interval').value, $('enabled').checked ? '1' : '0', events, $('cooldown').value];
   const activationCode = $('activationCode').value.trim();
   if (activationCode && !/^\d+$/.test(activationCode)) { toast('激活内容只能填写数字 0-9'); return; }
   try {
     await rootExec(`${quote(CONTROL)} set-expected ${quote(activationCode)} && ${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
-    toast(activationCode ? '配置已保存：输入该数字后立即执行' : '配置已保存：自动触发已关闭'); await loadStatus();
+    toast(activationCode ? '配置已保存：输入该数字后立即执行' : '配置已保存：使用 v11 前台触发'); await loadStatus();
   } catch (error) { toast(error.message); }
 }
 

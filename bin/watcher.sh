@@ -33,16 +33,40 @@ if [ -n "$session_boot_id" ] && [ "$session_boot_id" != "$saved_session_boot_id"
   printf '%s\n' "$session_boot_id" > "$SESSION_BOOTFILE"
 fi
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] KernelSU 输入数字检测服务已启动，pid=$$" >> "$TRIGGER_LOG"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] KernelSU 前台与输入数字检测服务已启动，pid=$$" >> "$TRIGGER_LOG"
 
 read_value() {
   file="$1"; fallback="$2"
   [ -f "$CONFIG/$file" ] && cat "$CONFIG/$file" 2>/dev/null || printf '%s' "$fallback"
 }
 
+trigger_now() {
+  trigger_kind="$1"
+  trigger_message="$2"
+  now=$(date +%s)
+  elapsed=$((now - last_trigger))
+  [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
+  if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null && claim_app_session "$trigger_kind"; then
+    last_trigger=$now
+    printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
+    {
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] $trigger_message: package=$package"
+      if [ -f "$script" ]; then
+        export KSU_TRIGGER_TYPE="$trigger_kind" KSU_TRIGGER_PACKAGE="$package"
+        execute_script_file "$script"
+        code=$?
+        [ "$code" -eq 75 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] 已有脚本正在执行，本次跳过"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $code"
+      else
+        echo "脚本不存在: $script"
+      fi
+    } >> "$TRIGGER_LOG" 2>&1
+  fi
+}
+
 target_active=0
 match_latched=0
-empty_config_logged=0
+trigger_mode=''
 
 while true; do
   enabled=$(read_value enabled 0)
@@ -60,58 +84,47 @@ while true; do
   last_trigger=$(read_value last_trigger 0)
   case "$last_trigger" in ''|*[!0-9]*) last_trigger=0 ;; esac
 
-  # 仅在目标应用前台检查当前获得焦点的普通输入框。内容与配置数字完全
-  # 相同时立即执行，不依赖回车、确认键或键盘回撤。
+  # 未配置数字时完全采用 v11 行为：应用进入前台立即执行一次，不启动
+  # UIAutomator。配置数字后才读取普通输入框，精确匹配时立即执行。
   foreground=$(foreground_package)
   if [ -n "$foreground" ] && [ "$foreground" = "$package" ]; then
     if [ "$target_active" != "1" ]; then
       target_active=1
       match_latched=0
-      empty_config_logged=0
+      trigger_mode=''
       clear_app_session_claim
       echo "[$(date '+%Y-%m-%d %H:%M:%S')] 目标应用进入前台: package=$package" >> "$TRIGGER_LOG"
     fi
 
     if [ -z "$expected_input" ]; then
-      match_latched=0
-      clear_app_session_claim
-      if [ "$empty_config_logged" != "1" ]; then
-        empty_config_logged=1
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 未设置激活数字，不自动执行: package=$package" >> "$TRIGGER_LOG"
-      fi
-    elif ui_has_expected_input "$expected_input"; then
-      if [ "$match_latched" != "1" ]; then
-        match_latched=1
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 激活数字匹配，立即执行: package=$package" >> "$TRIGGER_LOG"
-        now=$(date +%s)
-        elapsed=$((now - last_trigger))
-        [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
-        if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null && claim_app_session input_match; then
-          last_trigger=$now
-          printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
-          {
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 目标应用输入数字匹配: package=$package"
-            if [ -f "$script" ]; then
-              export KSU_TRIGGER_TYPE="input_match" KSU_TRIGGER_PACKAGE="$package"
-              execute_script_file "$script"
-              code=$?
-              [ "$code" -eq 75 ] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] 已有脚本正在执行，本次跳过"
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本结束，退出码: $code"
-            else
-              echo "脚本不存在: $script"
-            fi
-          } >> "$TRIGGER_LOG" 2>&1
-        fi
+      if [ "$trigger_mode" != "foreground" ]; then
+        clear_app_session_claim
+        match_latched=0
+        trigger_mode=foreground
+        trigger_now app_foreground '目标应用进入前台（v11 空数字模式）'
       fi
     else
-      if [ "$match_latched" = "1" ]; then clear_app_session_claim; fi
-      match_latched=0
+      if [ "$trigger_mode" != "input" ]; then
+        clear_app_session_claim
+        match_latched=0
+        trigger_mode=input
+      fi
+      if ui_has_expected_input "$expected_input"; then
+        if [ "$match_latched" != "1" ]; then
+          match_latched=1
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 激活数字匹配，立即执行: package=$package" >> "$TRIGGER_LOG"
+          trigger_now input_match '目标应用输入数字匹配'
+        fi
+      else
+        if [ "$match_latched" = "1" ]; then clear_app_session_claim; fi
+        match_latched=0
+      fi
     fi
   else
     if [ "$target_active" = "1" ]; then
       target_active=0
       match_latched=0
-      empty_config_logged=0
+      trigger_mode=''
       clear_app_session_claim
     fi
   fi

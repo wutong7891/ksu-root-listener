@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="dark">
-  <title>KSU 输入数字监听</title>
+  <title>KSU 前台与输入数字监听</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
     <header>
-      <div><p class="eyebrow">INPUT AUTOMATION</p><h1>输入数字监听与 Root 控制台</h1></div>
+      <div><p class="eyebrow">ROOT AUTOMATION</p><h1>前台与输入数字监听 Root 控制台</h1></div>
       <span id="watcherBadge" class="badge">读取中</span>
     </header>
 
     <section class="card">
-      <h2>输入数字监听配置</h2>
+      <h2>前台与输入数字监听配置</h2>
       <div id="supportNotice" class="notice">正在检测当前应用与键盘状态…</div>
       <label>目标应用包名<input id="package" autocomplete="off" placeholder="com.example.app"></label>
-      <label>激活数字<input id="activationCode" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="128" placeholder="例如 123456；留空则不自动执行"></label>
-      <p class="hint">在目标应用当前获得焦点的普通输入框中输入完全相同的数字后立即触发，无需按回车或收起键盘。密码框不会读取或触发。</p>
+      <label>激活数字（可选）<input id="activationCode" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="128" placeholder="例如 123456；留空使用 v11 前台触发"></label>
+      <p class="hint">留空时完全采用 v11：目标应用进入前台立即执行一次，不读取输入框。填写后，在当前获得焦点的普通输入框中输入完全相同的数字即立即触发，无需回车或收起键盘；密码框不会读取。</p>
       <label>数字匹配后执行的 Shell 文件<input id="script" autocomplete="off" placeholder="/data/adb/.../target.sh"></label>
       <label>脚本预输入台
         <textarea id="scriptInput" rows="5" spellcheck="false" placeholder="1&#10;确认&#10;要输入的文字"></textarea>
@@ -35,7 +35,7 @@
         <button id="openApp">打开应用</button>
         <button id="runScript">使用预输入执行</button>
       </div>
-      <p class="hint">启用后约每 0.25 秒发现目标应用，进入目标应用后约每 0.10 秒发起输入检查；匹配后立即执行，同一内容保持不变时只执行一次。留空时不自动执行。保存配置会强制重载当前版本监听器，无需重启手机。模块不会记录实际输入。脚本由 Root 从 <code>/</code> 执行。</p>
+      <p class="hint">启用后约每 0.25 秒发现目标应用。空数字模式不调用 UIAutomator，进入前台立即执行；数字模式进入目标应用后约每 0.10 秒发起输入检查。保存配置会强制重载当前版本监听器，无需重启手机。脚本由 Root 从 <code>/</code> 执行。</p>
     </section>
 
     <section class="card">
