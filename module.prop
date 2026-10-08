@@ -1,7 +1,7 @@
 id=ksu_app_watcher
 name=KSU Root监听与 Root 控制台
 version=内测版本
-versionCode=6
+versionCode=7
 author=无痛
 description=监听指定应用进入前台及 SU/Root 请求并执行 Shell，提供开机自启、根目录浏览与预输入 Root 控制台。
 

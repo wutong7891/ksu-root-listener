@@ -60,7 +60,7 @@ async function saveConfig() {
   ].filter(Boolean).join(',');
   const args = [$('package').value.trim(), $('script').value.trim(), $('interval').value, $('enabled').checked ? '1' : '0', events, $('cooldown').value];
   try {
-    await rootExec(`${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')} && ${quote(CONTROL)} restart`);
+    await rootExec(`${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
     toast('配置已保存'); await loadStatus();
   } catch (error) { toast(error.message); }
 }

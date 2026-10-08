@@ -86,8 +86,14 @@ case "$1" in
   log) [ -f "$TRIGGER_LOG" ] && tail -n "${2:-120}" "$TRIGGER_LOG" || echo "暂无触发日志" ;;
   clear-log) : > "$TRIGGER_LOG"; echo "触发日志已清空" ;;
   restart)
-    pid=$(cat "$MODDIR/watcher.pid" 2>/dev/null); [ -n "$pid" ] && kill "$pid" 2>/dev/null
-    rm -f "$MODDIR/watcher.pid"; nohup "$MODDIR/bin/watcher.sh" >/dev/null 2>&1 & echo "监听器已重启"
+    pid=$(cat "$MODDIR/watcher.pid" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      echo "监听器正在运行；配置会自动加载，无需重启"
+    else
+      rm -f "$MODDIR/watcher.pid"
+      nohup "$MODDIR/bin/watcher.sh" </dev/null >/dev/null 2>&1 &
+      echo "监听器已启动；建议重启手机以确保由 KernelSU 服务托管"
+    fi
     ;;
   *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|list-dir|root-log|packages|clear-root-log|log|clear-log|restart}" >&2; exit 1 ;;
 esac
