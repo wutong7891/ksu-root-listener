@@ -1,0 +1,65 @@
+name: Build KernelSU Root Listener Module
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate module metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f module.prop
+          grep -Eq '^id=[A-Za-z][A-Za-z0-9._-]+$' module.prop
+          grep -Eq '^versionCode=[0-9]+$' module.prop
+          grep -q '^name=' module.prop
+          grep -q '^version=' module.prop
+
+      - name: Check shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do
+            sh -n "$script"
+            shellcheck -S error -s sh "$script"
+          done < <(find . -type f -name '*.sh' -print0)
+
+      - name: Build flashable ZIP
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' module.prop | head -n1)"
+          artifact="ksu-root-listener-${version}.zip"
+          mkdir -p dist staging
+          rsync -a ./ staging/ \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'dist/' \
+            --exclude 'staging/' \
+            --exclude 'README.md'
+          (cd staging && zip -9 -r "../dist/${artifact}" .)
+          unzip -t "dist/${artifact}"
+          unzip -Z1 "dist/${artifact}" | grep -qx 'module.prop'
+          echo "artifact=${artifact}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: dist/${{ steps.package.outputs.artifact }}
+          if-no-files-found: error
+

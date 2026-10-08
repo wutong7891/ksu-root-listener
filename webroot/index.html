@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>KSU Root监听</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">KERNEL SULOG AUTOMATION</p><h1>Root监听与控制台</h1></div>
+      <span id="watcherBadge" class="badge">读取中</span>
+    </header>
+
+    <section class="card">
+      <h2>Root监听配置</h2>
+      <div id="supportNotice" class="notice">正在检测 sulog…</div>
+      <label>目标应用包名<input id="package" autocomplete="off" placeholder="com.example.app"></label>
+      <label>Root 触发后执行的 Shell 文件<input id="script" autocomplete="off" placeholder="/data/adb/.../target.sh"></label>
+      <label>脚本预输入台
+        <textarea id="scriptInput" rows="5" spellcheck="false" placeholder="1&#10;确认&#10;要输入的文字"></textarea>
+      </label>
+      <p class="hint">每一行会依次发送给脚本，并在行末模拟回车。适用于使用 <code>read</code> 读取数字、文字或菜单选项的脚本；留空表示不预输入。</p>
+      <div class="checks">
+        <label><input id="eventSu" type="checkbox" checked> 经典 SU 请求</label>
+        <label><input id="eventIoctl" type="checkbox" checked> ioctl Root 授权</label>
+        <label><input id="eventExec" type="checkbox"> Root execve</label>
+      </div>
+      <div class="row">
+        <label>检查间隔（秒）<input id="interval" type="number" min="1" max="60" value="2"></label>
+        <label>触发冷却（秒）<input id="cooldown" type="number" min="0" max="3600" value="2"></label>
+        <label class="switchRow">启用监听<input id="enabled" type="checkbox"></label>
+      </div>
+      <div class="buttons">
+        <button id="save" class="primary">保存并重启监听</button>
+        <button id="openApp">打开应用</button>
+        <button id="runScript">使用预输入执行</button>
+      </div>
+      <p class="hint">匹配目标应用 UID 的 Root 请求。脚本由 Root 从 <code>/</code> 执行，并收到 KSU_SULOG_* 环境变量。</p>
+    </section>
+
+    <section class="card">
+      <div class="titleRow"><h2>Root 文件浏览器</h2><button id="rootDir" class="small">回到 /</button></div>
+      <div class="pathBar"><button id="upDir" class="small">上一级</button><input id="path" value="/" spellcheck="false"><button id="goDir" class="small">前往</button></div>
+      <div id="files" class="files"><span class="hint">正在读取根目录…</span></div>
+      <p class="hint">点击目录进入；点击 Shell 文件会把其绝对路径填入监听配置。</p>
+    </section>
+
+    <section class="card">
+      <div class="titleRow"><h2>Root 控制台</h2><button id="showRoot" class="small">显示 /</button></div>
+      <div class="presets">
+        <button data-command="pwd && ls -la /">根目录</button>
+        <button data-command="ps -A | head -n 30">进程</button>
+        <button data-command="getprop ro.product.model">设备型号</button>
+        <button data-command="id">Root 身份</button>
+      </div>
+      <label>预输入命令（执行前可编辑）<textarea id="command" rows="4" spellcheck="false">pwd && ls -la /</textarea></label>
+      <button id="execute" class="primary full">以 Root 从 / 执行</button>
+      <pre id="terminal" aria-live="polite">等待命令…</pre>
+    </section>
+
+    <section class="card">
+      <div class="titleRow"><h2>Root 应用监听</h2><div class="buttons compact"><button id="refreshRootLog" class="small">刷新</button><button id="clearRootLog" class="small danger">清空</button></div></div>
+      <input id="eventSearch" class="searchInput" placeholder="搜索应用、UID、进程或命令">
+      <div class="checks eventFilters">
+        <label><input type="checkbox" data-event-filter="sucompat" checked> 经典 SU</label>
+        <label><input type="checkbox" data-event-filter="ioctl_grant_root" checked> Root 授权</label>
+        <label><input type="checkbox" data-event-filter="root_execve" checked> Root execve</label>
+        <label><input type="checkbox" data-event-filter="daemon_start" checked> 守护进程</label>
+      </div>
+      <div id="events" class="events"><span class="hint">暂无监听记录</span></div>
+    </section>
+
+    <section class="card">
+      <div class="titleRow"><h2>脚本触发日志</h2><div class="buttons compact"><button id="refreshLog" class="small">刷新</button><button id="clearLog" class="small danger">清空</button></div></div>
+      <pre id="log">暂无日志</pre>
+    </section>
+  </main>
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
+

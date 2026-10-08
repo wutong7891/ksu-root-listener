@@ -1,0 +1,7 @@
+id=ksu_app_watcher
+name=KSU Root监听与 Root 控制台
+version=内测版本
+versionCode=3
+author=无痛
+description=复刻定制 KernelSU 的 Root监听：捕获目标应用的 SU/Root 请求后执行 Shell，并提供应用启动、根目录浏览与预输入 Root 控制台。
+
