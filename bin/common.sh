@@ -6,6 +6,48 @@ pid_is_watcher() {
   tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -F "$MODDIR/bin/watcher.sh" >/dev/null 2>&1
 }
 
+acquire_watcher_lock() {
+  WATCHER_LOCK="$STATE_DIR/watcher.lock"
+  if mkdir "$WATCHER_LOCK" 2>/dev/null; then
+    printf '%s\n' "$$" > "$WATCHER_LOCK/pid"
+    return 0
+  fi
+  owner=$(cat "$WATCHER_LOCK/pid" 2>/dev/null)
+  if pid_is_watcher "$owner" && kill -0 "$owner" 2>/dev/null; then return 1; fi
+  stale_lock="$WATCHER_LOCK.stale.$$"
+  mv "$WATCHER_LOCK" "$stale_lock" 2>/dev/null || return 1
+  rm -f "$stale_lock/pid"
+  rmdir "$stale_lock" 2>/dev/null || return 1
+  mkdir "$WATCHER_LOCK" 2>/dev/null || return 1
+  printf '%s\n' "$$" > "$WATCHER_LOCK/pid"
+}
+
+release_watcher_lock() {
+  WATCHER_LOCK="$STATE_DIR/watcher.lock"
+  owner=$(cat "$WATCHER_LOCK/pid" 2>/dev/null)
+  [ "$owner" = "$$" ] || return 0
+  rm -f "$WATCHER_LOCK/pid"
+  rmdir "$WATCHER_LOCK" 2>/dev/null
+}
+
+# 前台检测和 Root 日志是两个独立触发源。使用 mkdir 的原子性让本次应用
+# 前台会话只能被其中一个触发源认领，避免先 Root、后前台造成顺序重复执行。
+claim_app_session() {
+  claim_source="$1"
+  SESSION_CLAIM="$STATE_DIR/app_session.claim"
+  mkdir "$SESSION_CLAIM" 2>/dev/null || return 1
+  printf '%s\n' "$$" > "$SESSION_CLAIM/pid"
+  printf '%s\n' "$claim_source" > "$SESSION_CLAIM/source"
+  printf '1\n' > "$CONFIG/app_session_triggered"
+}
+
+clear_app_session_claim() {
+  SESSION_CLAIM="$STATE_DIR/app_session.claim"
+  rm -f "$SESSION_CLAIM/pid" "$SESSION_CLAIM/source"
+  rmdir "$SESSION_CLAIM" 2>/dev/null || true
+  printf '0\n' > "$CONFIG/app_session_triggered"
+}
+
 acquire_run_lock() {
   RUN_LOCK="$STATE_DIR/run.lock"
   if mkdir "$RUN_LOCK" 2>/dev/null; then
@@ -14,7 +56,10 @@ acquire_run_lock() {
   fi
   owner=$(cat "$RUN_LOCK/pid" 2>/dev/null)
   if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then return 1; fi
-  rm -rf "$RUN_LOCK"
+  stale_lock="$RUN_LOCK.stale.$$"
+  mv "$RUN_LOCK" "$stale_lock" 2>/dev/null || return 1
+  rm -f "$stale_lock/pid"
+  rmdir "$stale_lock" 2>/dev/null || return 1
   mkdir "$RUN_LOCK" 2>/dev/null || return 1
   printf '%s\n' "$$" > "$RUN_LOCK/pid"
 }

@@ -28,6 +28,8 @@ case "$1" in
     ;;
   configure)
     package="$2"; script="$3"; interval="$4"; enabled="$5"; events="$6"; cooldown="$7"
+    old_package=$(read_value package '')
+    old_enabled=$(read_value enabled 0)
     case "$package" in ''|*[!A-Za-z0-9._]*) echo "包名格式不正确" >&2; exit 2 ;; esac
     case "$script" in /*) ;; *) echo "脚本路径必须是绝对路径" >&2; exit 2 ;; esac
     case "$interval" in ''|*[!0-9]*) echo "轮询间隔必须是整数" >&2; exit 2 ;; esac
@@ -39,6 +41,10 @@ case "$1" in
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
     write_value enabled "$enabled"; write_value events "$events"; write_value cooldown "$cooldown"
+    if [ "$package" != "$old_package" ] || { [ "$old_enabled" != "1" ] && [ "$enabled" = "1" ]; }; then
+      clear_app_session_claim
+      rm -f "$CONFIG/last_foreground" "$CONFIG/last_trigger"
+    fi
     if [ "$enabled" = "1" ] && [ "$(sulog_status)" = "supported" ]; then
       ksud feature set sulog 1 >/dev/null 2>&1
       ksud feature save >/dev/null 2>&1
@@ -50,18 +56,20 @@ case "$1" in
     package=$(read_value package '')
     [ -n "$package" ] || { echo "尚未配置包名" >&2; exit 2; }
     write_value manual_open_pid "$$"
+    clear_app_session_claim
+    claim_app_session manual || { echo "无法认领本次应用会话" >&2; exit 75; }
     trap 'rm -f "$CONFIG/manual_open_pid"' EXIT INT TERM
     monkey -p "$package" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     code=$?
     if [ "$code" -eq 0 ]; then
       # WebUI 主动打开时直接执行一次，并写入会话标记，避免监听器随后重复触发。
       write_value last_foreground "$package"
-      write_value app_session_triggered 1
       write_value last_trigger "$(date +%s)"
       echo "已启动 $package，开始执行脚本"
       "$0" run
       code=$?
     else
+      clear_app_session_claim
       echo "无法启动 $package" >&2
     fi
     exit "$code"

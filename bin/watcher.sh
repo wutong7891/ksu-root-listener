@@ -14,14 +14,14 @@ SULOG_DIR="/data/adb/ksu/log"
 mkdir -p "$CONFIG" "$STATE_DIR/logs"
 . "$MODDIR/bin/common.sh"
 
-if [ -f "$PIDFILE" ]; then
-  old_pid=$(cat "$PIDFILE" 2>/dev/null)
-  if pid_is_watcher "$old_pid" && kill -0 "$old_pid" 2>/dev/null; then exit 0; fi
-  rm -f "$PIDFILE"
-fi
-
+acquire_watcher_lock || exit 0
 echo $$ > "$PIDFILE"
-cleanup() { release_run_lock; rm -f "$PIDFILE"; }
+cleanup() {
+  release_run_lock
+  saved_pid=$(cat "$PIDFILE" 2>/dev/null)
+  [ "$saved_pid" = "$$" ] && rm -f "$PIDFILE"
+  release_watcher_lock
+}
 trap cleanup EXIT
 trap 'exit 0' INT TERM
 
@@ -29,7 +29,8 @@ trap 'exit 0' INT TERM
 session_boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 saved_session_boot_id=$(cat "$SESSION_BOOTFILE" 2>/dev/null)
 if [ -n "$session_boot_id" ] && [ "$session_boot_id" != "$saved_session_boot_id" ]; then
-  rm -f "$CONFIG/last_foreground" "$CONFIG/app_session_triggered" "$CONFIG/last_trigger"
+  rm -f "$CONFIG/last_foreground" "$CONFIG/last_trigger"
+  clear_app_session_claim
   printf '%s\n' "$session_boot_id" > "$SESSION_BOOTFILE"
 fi
 
@@ -78,6 +79,7 @@ enable_sulog() {
 
 sulog_ready=0
 initialized=0
+away_samples=0
 
 while true; do
   enabled=$(read_value enabled 0)
@@ -98,23 +100,22 @@ while true; do
   # 只在应用从后台进入前台时触发一次，持续停留前台不会重复执行。
   foreground=$(foreground_package)
   last_foreground=$(read_value last_foreground '')
-  if [ -n "$foreground" ] && [ "$foreground" != "$last_foreground" ]; then
+  if [ -n "$foreground" ] && [ "$foreground" = "$package" ]; then
+    away_samples=0
     manual_open_pid=$(read_value manual_open_pid '')
-    if [ "$foreground" = "$package" ] && [ -n "$manual_open_pid" ] \
+    if [ -n "$manual_open_pid" ] \
       && kill -0 "$manual_open_pid" 2>/dev/null \
       && tr '\000' ' ' < "/proc/$manual_open_pid/cmdline" 2>/dev/null | grep -F "$MODDIR/bin/control.sh" >/dev/null 2>&1; then
-      sleep "$interval"
-      continue
-    fi
-    printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
-    if [ -n "$package" ] && [ "$foreground" = "$package" ]; then
+      # control.sh open 已在启动应用前认领会话，由它负责执行脚本。
+      printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
+    elif [ "$foreground" != "$last_foreground" ]; then
+      printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
       now=$(date +%s)
       elapsed=$((now - last_trigger))
       [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
-      if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null; then
+      if [ "$elapsed" -ge "$cooldown" ] 2>/dev/null && claim_app_session foreground; then
         last_trigger=$now
         printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
-        printf '1\n' > "$CONFIG/app_session_triggered"
         {
           echo "[$(date '+%Y-%m-%d %H:%M:%S')] 应用进入前台: package=$package"
           if [ -f "$script" ]; then
@@ -129,8 +130,19 @@ while true; do
           fi
         } >> "$TRIGGER_LOG" 2>&1
       fi
+    fi
+  elif [ -n "$foreground" ] && [ -n "$package" ]; then
+    # 系统弹窗或焦点抖动可能只持续一个采样周期；连续两次确认离开后才结束会话。
+    if [ "$last_foreground" = "$package" ]; then
+      away_samples=$((away_samples + 1))
+      if [ "$away_samples" -ge 2 ]; then
+        printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
+        clear_app_session_claim
+        away_samples=0
+      fi
     else
-      printf '0\n' > "$CONFIG/app_session_triggered"
+      printf '%s\n' "$foreground" > "$CONFIG/last_foreground"
+      away_samples=0
     fi
   fi
 
@@ -171,16 +183,14 @@ while true; do
       app_id=$((uid % 100000))
       case ",$events," in *",$event_type,"*) ;; *) continue ;; esac
       [ "$app_id" -eq "$target_app_id" ] 2>/dev/null || continue
-      # 目标应用本次进入前台时已经执行过，忽略其后续 Root 事件，避免重复。
-      session_triggered=$(read_value app_session_triggered 0)
-      [ "$session_triggered" = "1" ] && continue
       now=$(date +%s)
       elapsed=$((now - last_trigger))
       [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
       [ "$elapsed" -ge "$cooldown" ] 2>/dev/null || continue
+      # 与前台检测原子竞争本次会话；只有一个触发源能成功认领。
+      claim_app_session "root:$seq" || continue
       last_trigger=$now
       printf '%s\n' "$last_trigger" > "$CONFIG/last_trigger"
-      printf '1\n' > "$CONFIG/app_session_triggered"
 
       comm=$(printf '%s\n' "$line" | sed -n 's/.* comm="\([^"]*\)".*/\1/p')
       file=$(printf '%s\n' "$line" | sed -n 's/.* file="\([^"]*\)".*/\1/p')

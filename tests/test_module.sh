@@ -43,6 +43,19 @@ input='1
 KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" set-preinput "$input" >/dev/null
 assert_equal "$(KSU_WATCHER_STATE_DIR="$test_root" sh "$test_root/bin/control.sh" run)" '<1>|<>|<确认>'
 
+# 前台检测和 Root 日志只能有一个触发源认领同一次应用会话。
+STATE_DIR="$test_root"
+CONFIG="$test_root/config"
+claim_app_session root
+if claim_app_session foreground; then
+  echo 'same app session was claimed twice' >&2
+  exit 1
+fi
+clear_app_session_claim
+claim_app_session foreground
+assert_equal "$(cat "$test_root/app_session.claim/source")" foreground
+clear_app_session_claim
+
 if command -v sleep >/dev/null 2>&1; then
 cat > "$test_root/slow-script.sh" <<SCRIPT
 #!/bin/sh
@@ -67,10 +80,22 @@ fi
 mock_bin="$test_root/mock-bin"
 watch_state="$test_root/watch-state"
 mkdir -p "$mock_bin" "$watch_state/config" "$watch_state/logs"
-cat > "$mock_bin/dumpsys" <<'SCRIPT'
+cat > "$mock_bin/dumpsys" <<SCRIPT
 #!/bin/sh
-case "$1:$2" in
-  activity:activities) echo 'mResumedActivity: ActivityRecord{abc u0 com.demo.target/.MainActivity t12}' ;;
+count_file='$test_root/dumpsys-count'
+count=0
+[ -f "\$count_file" ] && count=\$(cat "\$count_file")
+count=\$((count + 1))
+printf '%s\n' "\$count" > "\$count_file"
+case "\$1:\$2" in
+  activity:activities)
+    # 第二次采样模拟短暂跳到 SystemUI，随后返回目标应用。
+    if [ "\$count" -eq 2 ]; then
+      echo 'mResumedActivity: ActivityRecord{abc u0 com.android.systemui/.MainActivity t12}'
+    else
+      echo 'mResumedActivity: ActivityRecord{abc u0 com.demo.target/.MainActivity t12}'
+    fi
+    ;;
 esac
 SCRIPT
 cat > "$mock_bin/ksud" <<'SCRIPT'
@@ -92,12 +117,21 @@ printf '0\n' > "$watch_state/config/cooldown"
 printf '7\n' > "$watch_state/config/preinput"
 if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   set +e
-  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 3 sh "$ROOT/bin/watcher.sh"
+  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 4 sh "$ROOT/bin/watcher.sh" &
+  watcher_job=$!
+  tries=0
+  while [ ! -d "$watch_state/watcher.lock" ] && [ "$tries" -lt 40 ]; do sleep 0.05; tries=$((tries + 1)); done
+  # 第二个监听器必须因原子单实例锁立即退出。
+  PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" sh "$ROOT/bin/watcher.sh"
+  duplicate_code=$?
+  wait "$watcher_job"
   watch_code=$?
   set -e
+  [ "$duplicate_code" -eq 0 ] || { echo "duplicate watcher exited $duplicate_code" >&2; exit 1; }
   [ "$watch_code" -eq 124 ] || [ "$watch_code" -eq 143 ] || { echo "watcher test exited $watch_code" >&2; exit 1; }
   assert_equal "$(cat "$test_root/trigger-result")" 7
   [ "$(wc -l < "$test_root/trigger-result" | tr -d ' ')" = 1 ] || { echo 'watcher triggered more than once' >&2; exit 1; }
+  [ "$(grep -c '后台监听服务已启动' "$watch_state/logs/trigger.log")" = 1 ] || { echo 'more than one watcher started' >&2; exit 1; }
 fi
 
 echo 'module tests passed'
