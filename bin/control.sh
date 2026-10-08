@@ -16,8 +16,10 @@ case "$1" in
     echo "package=$(read_value package com.example.app)"
     echo "script=$(read_value script "$MODDIR/scripts/target.sh")"
     echo "interval=$(read_value interval 2)"
+    echo "active_interval=0.25"
     echo "events=keyboard_hidden"
     echo "cooldown=$(read_value cooldown 2)"
+    [ -s "$CONFIG/expected_input" ] && echo "expected_set=yes" || echo "expected_set=no"
     echo "foreground=$(foreground_package)"
     keyboard_visible && echo "keyboard=visible" || echo "keyboard=hidden"
     pid=$(cat "$STATE_DIR/watcher.pid" 2>/dev/null)
@@ -33,6 +35,7 @@ case "$1" in
     [ "$interval" -ge 1 ] && [ "$interval" -le 60 ] || { echo "轮询间隔必须在 1 到 60 秒之间" >&2; exit 2; }
     case "$enabled" in 0|1) ;; *) echo "启用值只能是 0 或 1" >&2; exit 2 ;; esac
     [ "$events" = "keyboard_hidden" ] || { echo "只支持目标应用键盘回撤触发" >&2; exit 2; }
+    [ "$enabled" != "1" ] || [ -s "$CONFIG/expected_input" ] || { echo "请先设置激活字符" >&2; exit 2; }
     case "$cooldown" in ''|*[!0-9]*) echo "冷却时间必须是整数" >&2; exit 2 ;; esac
     [ "$cooldown" -le 3600 ] || { echo "冷却时间不能超过 3600 秒" >&2; exit 2; }
     write_value package "$package"; write_value script "$script"; write_value interval "$interval"
@@ -70,6 +73,15 @@ case "$1" in
     if [ -n "$2" ]; then write_value preinput "$2"; else : > "$CONFIG/preinput"; fi
     echo "预输入已保存"
     ;;
+  get-expected)
+    read_value expected_input ''
+    ;;
+  set-expected)
+    [ -n "$2" ] || { echo "激活字符不能为空" >&2; exit 2; }
+    [ "${#2}" -le 128 ] || { echo "激活字符不能超过 128 个字符" >&2; exit 2; }
+    write_value expected_input "$2"
+    echo "激活字符已保存"
+    ;;
   list-dir)
     path="$2"; case "$path" in /*) ;; *) echo "目录必须是绝对路径" >&2; exit 2 ;; esac
     [ -d "$path" ] || { echo "目录不存在: $path" >&2; exit 2; }
@@ -90,6 +102,6 @@ case "$1" in
       echo "监听器已启动；建议重启手机以确保由 KernelSU 服务托管"
     fi
     ;;
-  *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|list-dir|log|clear-log|restart}" >&2; exit 1 ;;
+  *) echo "用法: $0 {status|configure|open|run|get-preinput|set-preinput|get-expected|set-expected|list-dir|log|clear-log|restart}" >&2; exit 1 ;;
 esac
 

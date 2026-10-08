@@ -7,6 +7,7 @@ CONFIG="$STATE_DIR/config"
 TRIGGER_LOG="$STATE_DIR/logs/trigger.log"
 PIDFILE="$STATE_DIR/watcher.pid"
 SESSION_BOOTFILE="$CONFIG/session_boot_id"
+ACTIVE_INTERVAL=0.25
 
 mkdir -p "$CONFIG" "$STATE_DIR/logs"
 . "$MODDIR/bin/common.sh"
@@ -41,6 +42,7 @@ read_value() {
 target_active=0
 keyboard_armed=0
 hidden_samples=0
+input_matched=0
 
 while true; do
   enabled=$(read_value enabled 0)
@@ -52,6 +54,7 @@ while true; do
 
   package=$(read_value package '')
   script=$(read_value script "$MODDIR/scripts/target.sh")
+  expected_input=$(read_value expected_input '')
   cooldown=$(read_value cooldown 2)
   case "$cooldown" in ''|*[!0-9]*) cooldown=2 ;; esac
   last_trigger=$(read_value last_trigger 0)
@@ -65,6 +68,7 @@ while true; do
       target_active=1
       keyboard_armed=0
       hidden_samples=0
+      input_matched=0
       clear_app_session_claim
     fi
 
@@ -73,13 +77,25 @@ while true; do
       if [ "$keyboard_armed" != "1" ]; then
         clear_app_session_claim
         keyboard_armed=1
+        input_matched=0
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] 检测到键盘弹出，等待回撤: package=$package" >> "$TRIGGER_LOG"
+      fi
+      if [ "$input_matched" != "1" ] && ui_has_expected_input "$expected_input"; then
+        input_matched=1
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 激活字符匹配，等待键盘回撤: package=$package" >> "$TRIGGER_LOG"
       fi
     elif [ "$keyboard_armed" = "1" ]; then
       hidden_samples=$((hidden_samples + 1))
       if [ "$hidden_samples" -ge 2 ]; then
         keyboard_armed=0
         hidden_samples=0
+        if [ "$input_matched" != "1" ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] 键盘已回撤，但激活字符不匹配，本次不执行: package=$package" >> "$TRIGGER_LOG"
+          input_matched=0
+          sleep "$ACTIVE_INTERVAL"
+          continue
+        fi
+        input_matched=0
         now=$(date +%s)
         elapsed=$((now - last_trigger))
         [ "$elapsed" -lt 0 ] 2>/dev/null && elapsed=$cooldown
@@ -108,10 +124,15 @@ while true; do
       target_active=0
       keyboard_armed=0
       hidden_samples=0
+      input_matched=0
       clear_app_session_claim
     fi
   fi
 
-  sleep "$interval"
+  if [ "$target_active" = "1" ]; then
+    sleep "$ACTIVE_INTERVAL"
+  else
+    sleep "$interval"
+  fi
 done
 

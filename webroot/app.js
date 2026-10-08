@@ -37,6 +37,7 @@ async function loadStatus() {
     $('cooldown').value = status.cooldown || '2';
     $('enabled').checked = status.enabled === '1';
     $('scriptInput').value = (await rootExec(`${quote(CONTROL)} get-preinput`)).stdout.replace(/\n$/, '');
+    $('activationCode').value = (await rootExec(`${quote(CONTROL)} get-expected`)).stdout.replace(/\n$/, '');
     const foreground = status.foreground || '未识别';
     const keyboard = status.keyboard === 'visible' ? '已弹出' : '已收起';
     $('supportNotice').textContent = `当前前台：${foreground} · 键盘：${keyboard}`;
@@ -50,8 +51,10 @@ async function loadStatus() {
 async function saveConfig() {
   const events = 'keyboard_hidden';
   const args = [$('package').value.trim(), $('script').value.trim(), $('interval').value, $('enabled').checked ? '1' : '0', events, $('cooldown').value];
+  const activationCode = $('activationCode').value;
+  if (!activationCode) { toast('请填写激活字符'); return; }
   try {
-    await rootExec(`${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
+    await rootExec(`${quote(CONTROL)} set-expected ${quote(activationCode)} && ${quote(CONTROL)} set-preinput ${quote($('scriptInput').value)} && ${quote(CONTROL)} configure ${args.map(quote).join(' ')}`);
     toast('配置已保存'); await loadStatus();
   } catch (error) { toast(error.message); }
 }

@@ -124,3 +124,25 @@ keyboard_visible() {
     END { exit visible ? 0 : 1 }
   '
 }
+
+# 使用 Root UIAutomator 层级只核对目标输入框是否等于配置值。
+# 不返回、不记录实际输入，并明确排除 password=true 的输入框。
+ui_has_expected_input() {
+  expected="$1"
+  [ -n "$expected" ] || return 1
+  xml_expected=$(printf '%s' "$expected" | sed \
+    -e 's/&/\&amp;/g' \
+    -e 's/</\&lt;/g' \
+    -e 's/>/\&gt;/g' \
+    -e 's/"/\&quot;/g' \
+    -e "s/'/\\\&apos;/g")
+  # 直接把层级写入 uiautomator 自身的 stdout，不在磁盘留下包含界面文字的 XML。
+  uiautomator dump /proc/self/fd/1 2>/dev/null | awk -v expected="$xml_expected" '
+    BEGIN { RS = "<node"; matched = 0 }
+    index($0, "editable=\"true\"") &&
+    index($0, "focused=\"true\"") &&
+    index($0, "password=\"false\"") &&
+    index($0, "text=\"" expected "\"") { matched = 1; exit }
+    END { exit matched ? 0 : 1 }
+  '
+}

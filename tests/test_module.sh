@@ -107,6 +107,11 @@ case "\$1:\$2" in
 esac
 SCRIPT
 command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/dumpsys"
+cat > "$mock_bin/uiautomator" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' '<hierarchy><node text="123abc" class="android.widget.EditText" password="false" focused="true" editable="true" /></hierarchy>'
+SCRIPT
+command -v chmod >/dev/null 2>&1 && chmod +x "$mock_bin/uiautomator"
 cat > "$test_root/trigger.sh" <<SCRIPT
 #!/bin/sh
 IFS= read -r choice
@@ -118,6 +123,7 @@ printf '%s\n' "$test_root/trigger.sh" > "$watch_state/config/script"
 printf '1\n' > "$watch_state/config/interval"
 printf '0\n' > "$watch_state/config/cooldown"
 printf '7\n' > "$watch_state/config/preinput"
+printf '123abc\n' > "$watch_state/config/expected_input"
 if timeout --version 2>/dev/null | grep -q 'GNU coreutils'; then
   set +e
   PATH="$mock_bin:$PATH" KSU_WATCHER_STATE_DIR="$watch_state" timeout -k 1 6 sh "$ROOT/bin/watcher.sh" &

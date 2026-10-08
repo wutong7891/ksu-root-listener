@@ -11,7 +11,7 @@ CONFIG="$STATE_DIR/config"
 mkdir -p "$CONFIG" "$STATE_DIR/logs"
 
 # 从早期版本的模块目录迁移配置，之后升级模块不会丢失设置。
-for name in enabled package script interval events cooldown preinput; do
+for name in enabled package script interval events cooldown preinput expected_input; do
   if [ ! -f "$CONFIG/$name" ] && [ -f "$MODPATH/config/$name" ]; then
     cp -f "$MODPATH/config/$name" "$CONFIG/$name"
   fi
@@ -25,6 +25,7 @@ done
 echo keyboard_hidden > "$CONFIG/events"
 [ -f "$CONFIG/cooldown" ] || echo 2 > "$CONFIG/cooldown"
 [ -f "$CONFIG/preinput" ] || : > "$CONFIG/preinput"
+[ -f "$CONFIG/expected_input" ] || : > "$CONFIG/expected_input"
 chmod 0700 "$STATE_DIR" "$CONFIG" "$STATE_DIR/logs"
 chmod 0600 "$CONFIG"/* 2>/dev/null
 
